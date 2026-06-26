@@ -171,3 +171,5 @@ User triggers analysis (UI or API)
 - Redis Cluster supported via `REDIS_URL` for HA
 - All backend state in PostgreSQL + Redis — backend containers are stateless
 - For Kubernetes: use PostgreSQL Operator (Zalando/CNPG) + Redis Sentinel/Cluster
+
+## Contribution Notes
