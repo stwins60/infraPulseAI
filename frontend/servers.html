@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraPulse AI — Servers</title>
+<link rel="stylesheet" href="/assets/css/main.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">⚡</div><div><div class="logo-text">InfraPulse AI</div><div class="logo-sub">Observability Platform</div></div></div>
+    <div class="org-switcher"><select id="org-select"></select></div>
+    <nav>
+      <div class="nav-section"><div class="nav-section-label">Overview</div><a href="/dashboard.html" class="nav-item"><span class="nav-icon">🏠</span> Overview</a></div>
+      <div class="nav-section"><div class="nav-section-label">Infrastructure</div>
+        <a href="/infrastructure.html" class="nav-item"><span class="nav-icon">🗄️</span> Inventory</a>
+        <a href="/proxmox.html" class="nav-item"><span class="nav-icon">🖥️</span> Proxmox</a>
+        <a href="/servers.html" class="nav-item active"><span class="nav-icon">💻</span> Servers</a>
+      </div>
+      <div class="nav-section"><div class="nav-section-label">Observability</div>
+        <a href="/logs.html" class="nav-item"><span class="nav-icon">📋</span> Logs</a>
+        <a href="/alerts.html" class="nav-item"><span class="nav-icon">🔔</span> Alerts</a>
+        <a href="/incidents.html" class="nav-item"><span class="nav-icon">🚨</span> Incidents</a>
+      </div>
+      <div class="nav-section"><div class="nav-section-label">Intelligence</div><a href="/ai-ops.html" class="nav-item"><span class="nav-icon">🤖</span> AI Operations</a></div>
+      <div class="nav-section"><div class="nav-section-label">Configuration</div>
+        <a href="/notifications.html" class="nav-item"><span class="nav-icon">📢</span> Notifications</a>
+        <a href="/settings.html" class="nav-item"><span class="nav-icon">⚙️</span> Settings</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer"><div class="user-info"><div class="user-avatar" id="user-avatar">U</div><div><div class="user-name" id="user-name">User</div><div class="user-role">Member</div></div></div><button class="btn btn-secondary btn-sm" style="width:100%;margin-top:8px;justify-content:center;" id="logout-btn">Sign Out</button></div>
+  </aside>
+
+  <div class="main-content">
+    <div class="topbar">
+      <div><div class="page-title">Servers</div><div class="page-subtitle">Linux & bare-metal server inventory</div></div>
+      <div class="topbar-search"><span class="search-icon">🔍</span><input type="text" placeholder="Search servers..." id="search-input"></div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary btn-sm" id="add-agent-btn">+ Add Server</button>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- Filters -->
+      <div class="card" style="margin-bottom:16px;padding:12px 16px;">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <select class="form-select" style="width:auto;padding:6px 12px;" id="filter-status">
+            <option value="">All Status</option>
+            <option value="online">Online</option>
+            <option value="warning">Warning</option>
+            <option value="critical">Critical</option>
+            <option value="offline">Offline</option>
+          </select>
+          <select class="form-select" style="width:auto;padding:6px 12px;" id="filter-env">
+            <option value="">All Environments</option>
+            <option value="production">Production</option>
+            <option value="staging">Staging</option>
+            <option value="development">Development</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" id="apply-filters">Apply Filters</button>
+          <span style="margin-left:auto;font-size:13px;color:var(--text-secondary);" id="result-count"></span>
+        </div>
+      </div>
+
+      <!-- Servers Table -->
+      <div class="card">
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Server</th>
+                <th>Status</th>
+                <th>Environment</th>
+                <th>OS</th>
+                <th>CPU</th>
+                <th>Memory</th>
+                <th>Disk</th>
+                <th>Health</th>
+                <th>Last Seen</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="servers-tbody">
+              <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted);">Loading servers...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Agent Token Modal -->
+<div class="modal-overlay" id="agent-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Generate Agent Registration Token</div>
+      <button class="modal-close" onclick="closeModal('agent-modal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Label (optional)</label>
+      <input type="text" class="form-input" id="token-label" placeholder="e.g. web-server-token">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Environment</label>
+      <select class="form-select" id="token-env">
+        <option value="production">Production</option>
+        <option value="staging">Staging</option>
+        <option value="development">Development</option>
+      </select>
+    </div>
+    <div id="token-result" style="display:none;">
+      <div class="form-group">
+        <label class="form-label">Installation Command</label>
+        <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-family:monospace;font-size:12px;word-break:break-all;" id="install-cmd"></div>
+      </div>
+      <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:var(--radius);padding:12px;font-size:13px;color:var(--green);">
+        ✓ Token generated! Run the command above on your server as root.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('agent-modal')">Close</button>
+      <button class="btn btn-primary" id="generate-token-btn" onclick="generateToken()">Generate Token</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+
+<script src="/assets/js/api-client.js"></script>
+<script>
+if (!requireAuth()) throw new Error();
+
+const orgId = getCurrentOrg();
+const user = getUserInfo();
+document.getElementById('user-name').textContent = user.name || 'User';
+document.getElementById('user-avatar').textContent = (user.name || 'U')[0].toUpperCase();
+document.getElementById('logout-btn').addEventListener('click', async () => { await window.api.logout(); window.location.href = '/login.html'; });
+
+let serverMetrics = {};
+
+async function loadServers() {
+  const status = document.getElementById('filter-status').value;
+  const env = document.getElementById('filter-env').value;
+  const search = document.getElementById('search-input').value;
+  const params = {};
+  if (status) params.status = status;
+  if (env) params.environment = env;
+  if (search) params.search = search;
+
+  try {
+    const servers = await window.api.getServers(orgId, params);
+    document.getElementById('result-count').textContent = `${servers.length} server(s) found`;
+
+    // Load metrics summary for inline display
+    try {
+      const metrics = await window.api.getMetricsSummary(orgId);
+      serverMetrics = {};
+      [...(metrics.top_cpu || []), ...(metrics.top_memory || []), ...(metrics.top_disk || [])].forEach(m => {
+        if (!serverMetrics[m.server_id]) serverMetrics[m.server_id] = {};
+      });
+    } catch {}
+
+    const tbody = document.getElementById('servers-tbody');
+    if (servers.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><div class="empty-state-icon">💻</div><div class="empty-state-title">No servers found</div><div class="empty-state-desc">Add a server by installing the InfraPulse agent</div><button class="btn btn-primary" onclick="openModal('agent-modal')">+ Add Server</button></div></td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = servers.map(s => {
+      const statusClass = s.status === 'online' ? 'badge-online' : s.status === 'offline' ? 'badge-offline' : `badge-${s.status}`;
+      const health = s.health_score || 0;
+      const healthClass = getHealthClass(health);
+      const ip = s.ip_addresses?.[0] || '—';
+      return `
+        <tr onclick="window.location.href='/server-detail.html?id=${s.id}'" style="cursor:pointer;">
+          <td>
+            <div style="font-weight:600;">${s.display_name || s.hostname}</div>
+            <div style="font-size:12px;color:var(--text-muted);">${ip}</div>
+          </td>
+          <td><span class="badge ${statusClass}">${s.status}</span></td>
+          <td><span class="badge badge-info">${s.environment}</span></td>
+          <td style="color:var(--text-secondary);font-size:12px;">${s.os_type || '—'} ${s.os_version || ''}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px;min-width:80px;">
+              <div class="progress-bar" style="width:60px;"><div class="progress-fill ${getProgressColor(0)}" style="width:0%"></div></div>
+              <span style="font-size:12px;">—</span>
+            </div>
+          </td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px;min-width:80px;">
+              <div class="progress-bar" style="width:60px;"><div class="progress-fill blue" style="width:0%"></div></div>
+              <span style="font-size:12px;">—</span>
+            </div>
+          </td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px;min-width:80px;">
+              <div class="progress-bar" style="width:60px;"><div class="progress-fill ${getProgressColor(0)}" style="width:0%"></div></div>
+              <span style="font-size:12px;">—</span>
+            </div>
+          </td>
+          <td><div class="health-score ${healthClass}" style="width:36px;height:36px;font-size:13px;">${health}</div></td>
+          <td style="font-size:12px;color:var(--text-muted);">${s.last_seen_at ? formatRelativeTime(s.last_seen_at) : 'Never'}</td>
+          <td>
+            <div style="display:flex;gap:4px;" onclick="event.stopPropagation()">
+              <button class="btn btn-secondary btn-xs" onclick="window.location.href='/server-detail.html?id=${s.id}'">View</button>
+              <button class="btn btn-secondary btn-xs" onclick="analyzeServer('${s.id}')">🤖</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    showToast('Failed to load servers: ' + err.message, 'error');
+  }
+}
+
+async function analyzeServer(serverId) {
+  try {
+    showToast('Requesting AI analysis...', 'info');
+    await window.api.analyzeServer(orgId, serverId);
+    showToast('AI analysis complete! Check AI Operations page.', 'success');
+  } catch (err) {
+    showToast('AI analysis failed: ' + err.message, 'error');
+  }
+}
+
+async function generateToken() {
+  const label = document.getElementById('token-label').value;
+  const env = document.getElementById('token-env').value;
+  try {
+    const result = await window.api.createAgentToken(orgId, { label, environment: env });
+    document.getElementById('install-cmd').textContent = result.install_command;
+    document.getElementById('token-result').style.display = '';
+    document.getElementById('generate-token-btn').style.display = 'none';
+    showToast('Token generated successfully', 'success');
+  } catch (err) {
+    showToast('Failed to generate token: ' + err.message, 'error');
+  }
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); document.getElementById('token-result').style.display = 'none'; document.getElementById('generate-token-btn').style.display = ''; }
+
+document.getElementById('add-agent-btn').addEventListener('click', () => openModal('agent-modal'));
+document.getElementById('apply-filters').addEventListener('click', loadServers);
+document.getElementById('search-input').addEventListener('keyup', (e) => { if (e.key === 'Enter') loadServers(); });
+
+// Check URL params for status filter
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('status')) {
+  document.getElementById('filter-status').value = urlParams.get('status');
+}
+
+loadServers();
+</script>
+</body>
+</html>

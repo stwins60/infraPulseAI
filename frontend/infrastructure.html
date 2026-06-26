@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraPulse AI — Infrastructure Inventory</title>
+<link rel="stylesheet" href="/assets/css/main.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div>
+        <div class="page-title">Infrastructure Inventory</div>
+        <div class="page-subtitle">All servers, VMs, and containers in one view</div>
+      </div>
+      <div class="topbar-search"><span class="search-icon">🔍</span><input type="text" placeholder="Search infrastructure..." id="search-input"></div>
+      <div class="topbar-actions">
+        <button class="btn btn-secondary btn-sm" id="refresh-btn">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- Summary stats -->
+      <div class="stats-grid" id="summary-stats" style="margin-bottom:16px;">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-servers">—</div>
+          <div class="stat-label">Linux Servers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-vms">—</div>
+          <div class="stat-label">VMs / Containers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-online">—</div>
+          <div class="stat-label">Online</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-offline">—</div>
+          <div class="stat-label">Offline / Critical</div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px;">
+        <button class="tab-btn active" data-tab="servers">Linux Servers</button>
+        <button class="tab-btn" data-tab="proxmox">Proxmox VMs</button>
+      </div>
+
+      <!-- Servers tab -->
+      <div id="tab-servers">
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr><th>Hostname</th><th>Status</th><th>Environment</th><th>IP</th><th>OS</th><th>Tags</th><th>Health</th><th>Last Seen</th><th></th></tr>
+              </thead>
+              <tbody id="servers-tbody">
+                <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted);">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Proxmox VMs tab -->
+      <div id="tab-proxmox" style="display:none;">
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr><th>Name</th><th>Type</th><th>Status</th><th>Node</th><th>CPU</th><th>Memory</th><th>Disk</th><th>Uptime</th></tr>
+              </thead>
+              <tbody id="vms-tbody">
+                <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+<script src="/assets/js/api-client.js"></script>
+<script src="/assets/js/components.js"></script>
+<script>
+if (!initPage('infrastructure')) throw new Error();
+const orgId = getCurrentOrg();
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.getElementById('tab-servers').style.display = tab === 'servers' ? '' : 'none';
+    document.getElementById('tab-proxmox').style.display = tab === 'proxmox' ? '' : 'none';
+  });
+});
+
+async function loadServers() {
+  const search = document.getElementById('search-input').value;
+  try {
+    const servers = await window.api.getServers(orgId, search ? { search } : {});
+    const online = servers.filter(s => s.status === 'online').length;
+    const offline = servers.filter(s => ['offline','critical'].includes(s.status)).length;
+    document.getElementById('stat-servers').textContent = servers.length;
+    document.getElementById('stat-online').textContent = online;
+    document.getElementById('stat-offline').textContent = offline;
+
+    const tbody = document.getElementById('servers-tbody');
+    if (!servers.length) {
+      tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="empty-state-icon">💻</div><div class="empty-state-title">No servers found</div><a href="/servers.html" class="btn btn-primary" style="margin-top:8px;">Manage Servers</a></div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = servers.map(s => `
+      <tr style="cursor:pointer;" onclick="window.location.href='/server-detail.html?id=${s.id}'">
+        <td><div style="font-weight:600;">${s.display_name || s.hostname}</div><div style="font-size:12px;color:var(--text-muted);">${s.hostname}</div></td>
+        <td><span class="badge badge-${s.status}">${s.status}</span></td>
+        <td><span class="badge badge-info">${s.environment}</span></td>
+        <td style="font-size:12px;">${s.ip_addresses?.[0] || '—'}</td>
+        <td style="font-size:12px;color:var(--text-secondary);">${s.os_type || '—'}</td>
+        <td>${(s.tags || []).map(t => `<span class="badge badge-secondary" style="margin-right:2px;">${t}</span>`).join('')}</td>
+        <td><div class="health-score ${getHealthClass(s.health_score||0)}" style="width:32px;height:32px;font-size:12px;">${s.health_score||0}</div></td>
+        <td style="font-size:12px;color:var(--text-muted);">${s.last_seen_at ? formatRelativeTime(s.last_seen_at) : 'Never'}</td>
+        <td><a href="/server-detail.html?id=${s.id}" class="btn btn-secondary btn-xs" onclick="event.stopPropagation()">View</a></td>
+      </tr>
+    `).join('');
+  } catch(e) { showToast('Failed to load servers: ' + e.message, 'error'); }
+}
+
+async function loadVMs() {
+  try {
+    const connections = await window.api.getProxmoxConnections(orgId);
+    let vmCount = 0;
+    const allRows = [];
+
+    for (const conn of connections) {
+      try {
+        const vms = await window.api.getProxmoxVMs(orgId, conn.id);
+        vms.forEach(vm => {
+          vmCount++;
+          allRows.push(`
+            <tr>
+              <td><div style="font-weight:600;">${vm.name}</div><div style="font-size:12px;color:var(--text-muted);">${conn.name}</div></td>
+              <td><span class="badge badge-info">${vm.vm_type}</span></td>
+              <td><span class="badge badge-${vm.status === 'running' ? 'online' : 'offline'}">${vm.status}</span></td>
+              <td style="font-size:12px;">${vm.node || '—'}</td>
+              <td style="font-size:12px;">${vm.cpu_count ? vm.cpu_count + ' vCPU' : '—'}</td>
+              <td style="font-size:12px;">${vm.memory_bytes ? formatBytes(vm.memory_bytes) : '—'}</td>
+              <td style="font-size:12px;">${vm.disk_bytes ? formatBytes(vm.disk_bytes) : '—'}</td>
+              <td style="font-size:12px;">${vm.uptime_seconds ? formatUptime(vm.uptime_seconds) : '—'}</td>
+            </tr>
+          `);
+        });
+      } catch {}
+    }
+
+    document.getElementById('stat-vms').textContent = vmCount;
+    const tbody = document.getElementById('vms-tbody');
+    if (!allRows.length) {
+      tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-state-icon">🖥️</div><div class="empty-state-title">No VMs found</div><a href="/proxmox.html" class="btn btn-primary" style="margin-top:8px;">Add Proxmox Connection</a></div></td></tr>`;
+    } else {
+      tbody.innerHTML = allRows.join('');
+    }
+  } catch(e) { showToast('Failed to load VMs: ' + e.message, 'error'); }
+}
+
+document.getElementById('refresh-btn').addEventListener('click', () => { loadServers(); loadVMs(); });
+document.getElementById('search-input').addEventListener('keyup', e => { if (e.key === 'Enter') loadServers(); });
+
+loadServers();
+loadVMs();
+</script>
+</body>
+</html>

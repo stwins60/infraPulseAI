@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraPulse AI — AI Operations</title>
+<link rel="stylesheet" href="/assets/css/main.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div>
+        <div class="page-title">AI Operations</div>
+        <div class="page-subtitle">AI-powered incident analysis and infrastructure insights</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-secondary btn-sm" id="config-btn">⚙️ AI Config</button>
+        <button class="btn btn-primary btn-sm" id="refresh-btn">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- Provider status -->
+      <div id="provider-banner" style="display:none;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:var(--radius);padding:10px 16px;margin-bottom:16px;font-size:13px;color:var(--yellow);">
+        ⚠ No AI provider configured. <a href="#" onclick="openConfig()" style="color:var(--accent);">Configure AI provider</a> to enable analysis.
+      </div>
+
+      <!-- Quick analysis triggers -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:24px;">
+        <div class="card" style="padding:16px;text-align:center;cursor:pointer;border:1px solid var(--border);transition:border-color 0.2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'" onclick="analyzeOrg()">
+          <div style="font-size:32px;margin-bottom:8px;">🏥</div>
+          <div style="font-weight:600;margin-bottom:4px;">Infrastructure Health</div>
+          <div style="font-size:12px;color:var(--text-muted);">Analyze overall org health</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center;cursor:pointer;border:1px solid var(--border);transition:border-color 0.2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'" onclick="openAnalyzeModal('alert')">
+          <div style="font-size:32px;margin-bottom:8px;">🔔</div>
+          <div style="font-weight:600;margin-bottom:4px;">Analyze Alert</div>
+          <div style="font-size:12px;color:var(--text-muted);">Deep-dive into a firing alert</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center;cursor:pointer;border:1px solid var(--border);transition:border-color 0.2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'" onclick="openAnalyzeModal('server')">
+          <div style="font-size:32px;margin-bottom:8px;">💻</div>
+          <div style="font-weight:600;margin-bottom:4px;">Analyze Server</div>
+          <div style="font-size:12px;color:var(--text-muted);">Review server performance & logs</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center;cursor:pointer;border:1px solid var(--border);transition:border-color 0.2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'" onclick="openAnalyzeModal('incident')">
+          <div style="font-size:32px;margin-bottom:8px;">🚨</div>
+          <div style="font-weight:600;margin-bottom:4px;">Analyze Incident</div>
+          <div style="font-size:12px;color:var(--text-muted);">Root cause analysis for incidents</div>
+        </div>
+      </div>
+
+      <!-- Recent analyses -->
+      <div style="font-weight:600;font-size:15px;margin-bottom:12px;">Recent Analyses</div>
+
+      <!-- Filter -->
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+        <select class="form-select" style="width:auto;padding:6px 12px;" id="filter-type">
+          <option value="">All Types</option>
+          <option value="alert">Alert</option>
+          <option value="server">Server</option>
+          <option value="incident">Incident</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="loadAnalyses()">Apply</button>
+      </div>
+
+      <div id="analyses-list" style="display:grid;gap:12px;">
+        <div style="text-align:center;padding:32px;color:var(--text-muted);">Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Analyze target modal -->
+<div class="modal-overlay" id="analyze-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="analyze-modal-title">Select Target</div>
+      <button class="modal-close" onclick="closeModal('analyze-modal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label" id="analyze-target-label">Target</label>
+      <select class="form-select" id="analyze-target-select"></select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('analyze-modal')">Cancel</button>
+      <button class="btn btn-primary" id="run-analyze-btn">Run Analysis</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI Config Modal -->
+<div class="modal-overlay" id="config-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">AI Provider Configuration</div>
+      <button class="modal-close" onclick="closeModal('config-modal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Provider</label>
+      <select class="form-select" id="cfg-provider" onchange="toggleProviderFields()">
+        <option value="groq">Groq (Recommended - Fast &amp; Free)</option>
+        <option value="openai">OpenAI</option>
+        <option value="ollama">Ollama (Self-hosted)</option>
+      </select>
+    </div>
+    <div class="form-group" id="cfg-api-key-group">
+      <label class="form-label">API Key</label>
+      <input type="password" class="form-input" id="cfg-api-key" placeholder="sk-...">
+    </div>
+    <div class="form-group" id="cfg-model-group">
+      <label class="form-label">Model</label>
+      <input type="text" class="form-input" id="cfg-model" placeholder="e.g. llama-3.1-70b-versatile">
+    </div>
+    <div class="form-group" id="cfg-base-url-group" style="display:none;">
+      <label class="form-label">Base URL</label>
+      <input type="text" class="form-input" id="cfg-base-url" placeholder="http://localhost:11434">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('config-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveConfig()">Save Config</button>
+    </div>
+  </div>
+</div>
+
+<!-- Analysis detail modal -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal" style="max-width:700px;">
+    <div class="modal-header">
+      <div class="modal-title" id="detail-modal-title">AI Analysis</div>
+      <button class="modal-close" onclick="closeModal('detail-modal')">✕</button>
+    </div>
+    <div id="detail-modal-body" style="max-height:70vh;overflow-y:auto;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('detail-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+<script src="/assets/js/api-client.js"></script>
+<script src="/assets/js/components.js"></script>
+<script>
+if (!initPage('ai-ops')) throw new Error();
+const orgId = getCurrentOrg();
+let analyzeType = 'server';
+
+async function loadAnalyses() {
+  const typeFilter = document.getElementById('filter-type').value;
+  try {
+    let analyses = await window.api.getAIAnalyses(orgId);
+    if (typeFilter) analyses = analyses.filter(a => a.analysis_type === typeFilter);
+
+    const container = document.getElementById('analyses-list');
+    if (!analyses.length) {
+      container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🤖</div><div class="empty-state-title">No analyses yet</div><div class="empty-state-desc">Run your first AI analysis to get insights about your infrastructure</div></div>`;
+      return;
+    }
+
+    container.innerHTML = analyses.slice(0, 20).map(a => `
+      <div class="card" style="padding:16px;cursor:pointer;" onclick="viewAnalysis('${a.id}')">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span class="badge badge-info">${a.analysis_type}</span>
+            <span style="font-weight:600;">${a.subject_label || a.analysis_type + ' analysis'}</span>
+          </div>
+          <span style="font-size:12px;color:var(--text-muted);">${formatRelativeTime(a.created_at)}</span>
+        </div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;margin-bottom:8px;">${(a.summary || 'Analysis complete').substring(0, 200)}${(a.summary || '').length > 200 ? '...' : ''}</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span style="font-size:12px;color:var(--text-muted);">Provider: ${a.provider || '—'} · Model: ${a.model || '—'}</span>
+          ${a.severity_assessment ? `<span class="badge badge-${a.severity_assessment}">${a.severity_assessment}</span>` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch(e) { showToast('Failed to load analyses: ' + e.message, 'error'); }
+}
+
+async function loadConfig() {
+  try {
+    const cfg = await window.api.getAIConfig(orgId);
+    if (!cfg || !cfg.provider) {
+      document.getElementById('provider-banner').style.display = '';
+    }
+  } catch {}
+}
+
+async function analyzeOrg() {
+  showToast('Starting infrastructure analysis...', 'info');
+  try {
+    // Analyze all firing alerts
+    const alerts = await window.api.getAlerts(orgId, { status: 'firing', limit: 5 });
+    if (alerts.length > 0) {
+      await window.api.analyzeAlert(orgId, alerts[0].id);
+      showToast('Analysis complete!', 'success');
+      loadAnalyses();
+    } else {
+      showToast('No firing alerts to analyze. Try analyzing a server instead.', 'info');
+    }
+  } catch(e) { showToast('Analysis failed: ' + e.message, 'error'); }
+}
+
+async function openAnalyzeModal(type) {
+  analyzeType = type;
+  const modal = document.getElementById('analyze-modal');
+  const select = document.getElementById('analyze-target-select');
+  document.getElementById('analyze-modal-title').textContent = `Analyze ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+  document.getElementById('analyze-target-label').textContent = type.charAt(0).toUpperCase() + type.slice(1);
+  select.innerHTML = '<option value="">Loading...</option>';
+  modal.classList.add('open');
+
+  try {
+    let items = [];
+    if (type === 'server') {
+      items = await window.api.getServers(orgId);
+      select.innerHTML = items.map(s => `<option value="${s.id}">${s.display_name || s.hostname} (${s.status})</option>`).join('');
+    } else if (type === 'alert') {
+      items = await window.api.getAlerts(orgId, { status: 'firing' });
+      select.innerHTML = items.map(a => `<option value="${a.id}">${a.title} (${a.severity})</option>`).join('');
+    } else if (type === 'incident') {
+      items = await window.api.getIncidents(orgId, { status: 'open' });
+      select.innerHTML = items.map(i => `<option value="${i.id}">${i.title}</option>`).join('');
+    }
+    if (!items.length) select.innerHTML = `<option value="">No ${type}s available</option>`;
+  } catch(e) { select.innerHTML = '<option value="">Failed to load</option>'; }
+
+  document.getElementById('run-analyze-btn').onclick = async () => {
+    const targetId = select.value;
+    if (!targetId) { showToast('Please select a target', 'error'); return; }
+    document.getElementById('run-analyze-btn').disabled = true;
+    document.getElementById('run-analyze-btn').textContent = '⏳ Analyzing...';
+    try {
+      if (type === 'server') await window.api.analyzeServer(orgId, targetId);
+      else if (type === 'alert') await window.api.analyzeAlert(orgId, targetId);
+      else if (type === 'incident') await window.api.analyzeIncident(orgId, targetId);
+      showToast('Analysis complete!', 'success');
+      closeModal('analyze-modal');
+      loadAnalyses();
+    } catch(e) { showToast('Analysis failed: ' + e.message, 'error'); }
+    finally { document.getElementById('run-analyze-btn').disabled = false; document.getElementById('run-analyze-btn').textContent = 'Run Analysis'; }
+  };
+}
+
+async function viewAnalysis(analysisId) {
+  try {
+    const analyses = await window.api.getAIAnalyses(orgId);
+    const a = analyses.find(x => x.id === analysisId);
+    if (!a) return;
+
+    document.getElementById('detail-modal-title').textContent = a.subject_label || 'AI Analysis';
+    document.getElementById('detail-modal-body').innerHTML = `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <span class="badge badge-info">${a.analysis_type}</span>
+        ${a.severity_assessment ? `<span class="badge badge-${a.severity_assessment}">${a.severity_assessment}</span>` : ''}
+        <span style="font-size:12px;color:var(--text-muted);">${a.provider} / ${a.model}</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">${new Date(a.created_at).toLocaleString()}</span>
+      </div>
+      ${a.summary ? `<div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);border-radius:var(--radius);padding:12px;font-size:13px;margin-bottom:16px;"><strong>Summary:</strong> ${a.summary}</div>` : ''}
+      ${a.full_analysis ? `<div style="font-size:13px;line-height:1.7;color:var(--text-secondary);white-space:pre-wrap;">${a.full_analysis}</div>` : ''}
+      ${a.recommendations?.length ? `<div style="margin-top:16px;"><strong style="display:block;margin-bottom:8px;">Recommendations:</strong><ul style="margin:0;padding-left:20px;">${a.recommendations.map(r => `<li style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">${r}</li>`).join('')}</ul></div>` : ''}
+    `;
+    document.getElementById('detail-modal').classList.add('open');
+  } catch {}
+}
+
+function openConfig() { document.getElementById('config-modal').classList.add('open'); }
+
+function toggleProviderFields() {
+  const p = document.getElementById('cfg-provider').value;
+  document.getElementById('cfg-api-key-group').style.display = p === 'ollama' ? 'none' : '';
+  document.getElementById('cfg-base-url-group').style.display = p === 'ollama' ? '' : 'none';
+  const modelHints = { groq: 'llama-3.1-70b-versatile', openai: 'gpt-4o-mini', ollama: 'llama3.1' };
+  document.getElementById('cfg-model').placeholder = 'e.g. ' + (modelHints[p] || '');
+}
+
+async function saveConfig() {
+  const provider = document.getElementById('cfg-provider').value;
+  const config = {
+    provider,
+    model: document.getElementById('cfg-model').value || null,
+    api_key: document.getElementById('cfg-api-key').value || null,
+    base_url: document.getElementById('cfg-base-url').value || null,
+  };
+  try {
+    await window.api.updateAIConfig(orgId, config);
+    showToast('AI config saved!', 'success');
+    closeModal('config-modal');
+    loadConfig();
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+document.getElementById('config-btn').addEventListener('click', openConfig);
+document.getElementById('refresh-btn').addEventListener('click', loadAnalyses);
+
+loadConfig();
+loadAnalyses();
+</script>
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraPulse AI — Logs</title>
+<link rel="stylesheet" href="/assets/css/main.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div>
+        <div class="page-title">Log Explorer</div>
+        <div class="page-subtitle">Search and analyze logs from all servers</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-secondary btn-sm" id="refresh-btn">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- Stats bar -->
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <div class="card" style="flex:1;min-width:120px;padding:12px 16px;">
+          <div style="font-size:11px;color:var(--text-muted);">Total (24h)</div>
+          <div style="font-weight:700;font-size:20px;" id="stat-total">—</div>
+        </div>
+        <div class="card" style="flex:1;min-width:120px;padding:12px 16px;">
+          <div style="font-size:11px;color:var(--red);">Critical</div>
+          <div style="font-weight:700;font-size:20px;color:var(--red);" id="stat-critical">—</div>
+        </div>
+        <div class="card" style="flex:1;min-width:120px;padding:12px 16px;">
+          <div style="font-size:11px;color:var(--amber);">Error</div>
+          <div style="font-weight:700;font-size:20px;color:var(--amber);" id="stat-error">—</div>
+        </div>
+        <div class="card" style="flex:1;min-width:120px;padding:12px 16px;">
+          <div style="font-size:11px;color:var(--yellow);">Warning</div>
+          <div style="font-weight:700;font-size:20px;color:var(--yellow);" id="stat-warning">—</div>
+        </div>
+        <div class="card" style="flex:2;min-width:200px;padding:12px 16px;overflow:hidden;">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Volume (24h)</div>
+          <canvas id="log-volume-chart" height="36"></canvas>
+        </div>
+      </div>
+
+      <!-- Search panel -->
+      <div class="card" style="margin-bottom:16px;padding:16px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+          <div style="flex:3;min-width:200px;">
+            <label class="form-label" style="font-size:11px;">Search</label>
+            <input type="text" class="form-input" id="search-q" placeholder='e.g. "authentication failed" OR OOM'>
+          </div>
+          <div style="flex:1;min-width:130px;">
+            <label class="form-label" style="font-size:11px;">Level</label>
+            <select class="form-select" id="filter-level">
+              <option value="">All Levels</option>
+              <option value="critical">Critical</option>
+              <option value="error">Error</option>
+              <option value="warning">Warning</option>
+              <option value="info">Info</option>
+              <option value="debug">Debug</option>
+            </select>
+          </div>
+          <div style="flex:1;min-width:130px;">
+            <label class="form-label" style="font-size:11px;">Source</label>
+            <select class="form-select" id="filter-source">
+              <option value="">All Sources</option>
+            </select>
+          </div>
+          <div style="flex:1;min-width:130px;">
+            <label class="form-label" style="font-size:11px;">Time Range</label>
+            <select class="form-select" id="filter-time">
+              <option value="1h">Last 1 hour</option>
+              <option value="6h">Last 6 hours</option>
+              <option value="24h" selected>Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+            </select>
+          </div>
+          <div style="flex:1;min-width:130px;">
+            <label class="form-label" style="font-size:11px;">Limit</label>
+            <select class="form-select" id="filter-limit">
+              <option value="50">50</option>
+              <option value="100" selected>100</option>
+              <option value="250">250</option>
+              <option value="500">500</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="searchLogs()" style="margin-bottom:1px;">Search</button>
+          <button class="btn btn-secondary" onclick="clearSearch()" style="margin-bottom:1px;">Clear</button>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="card">
+        <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:13px;color:var(--text-muted);" id="result-count">Ready to search</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <label style="font-size:12px;display:flex;gap:6px;align-items:center;cursor:pointer;">
+              <input type="checkbox" id="auto-refresh-toggle"> Auto-refresh (5s)
+            </label>
+            <button class="btn btn-secondary btn-xs" id="wrap-toggle" onclick="toggleWrap()">Wrap</button>
+          </div>
+        </div>
+        <div id="log-entries" style="font-family:monospace;font-size:12px;max-height:65vh;overflow-y:auto;padding:0;">
+          <div style="text-align:center;padding:32px;color:var(--text-muted);">Enter a search query or leave blank to see recent logs</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+<script src="/assets/js/api-client.js"></script>
+<script src="/assets/js/components.js"></script>
+<script>
+if (!initPage('logs')) throw new Error();
+const orgId = getCurrentOrg();
+let autoRefreshTimer = null;
+let wrapEnabled = false;
+
+const LEVEL_COLORS = {
+  critical: '#ef4444',
+  error: '#f97316',
+  warning: '#eab308',
+  info: '#3b82f6',
+  debug: '#6b7280',
+  notice: '#22c55e',
+};
+
+async function loadStats() {
+  try {
+    const stats = await window.api.getLogStats(orgId, 24);
+    document.getElementById('stat-total').textContent = (stats.total || 0).toLocaleString();
+    document.getElementById('stat-critical').textContent = (stats.by_level?.critical || 0).toLocaleString();
+    document.getElementById('stat-error').textContent = (stats.by_level?.error || 0).toLocaleString();
+    document.getElementById('stat-warning').textContent = (stats.by_level?.warning || 0).toLocaleString();
+
+    // Populate source filter
+    const srcSelect = document.getElementById('filter-source');
+    const existing = Array.from(srcSelect.options).map(o => o.value);
+    (stats.top_sources || []).forEach(s => {
+      if (!existing.includes(s.source)) {
+        const opt = document.createElement('option');
+        opt.value = s.source;
+        opt.textContent = `${s.source} (${s.count})`;
+        srcSelect.appendChild(opt);
+      }
+    });
+
+    // Volume chart
+    if (stats.hourly_volume) {
+      const labels = stats.hourly_volume.map(h => h.hour);
+      const data = stats.hourly_volume.map(h => h.count);
+      const ctx = document.getElementById('log-volume-chart').getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets: [{ data, backgroundColor: '#3b82f620', borderColor: '#3b82f6', borderWidth: 1 }] },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } }, animation: false },
+      });
+    }
+  } catch {}
+}
+
+async function searchLogs() {
+  const params = {
+    q: document.getElementById('search-q').value || undefined,
+    level: document.getElementById('filter-level').value || undefined,
+    source: document.getElementById('filter-source').value || undefined,
+    time_range: document.getElementById('filter-time').value,
+    limit: parseInt(document.getElementById('filter-limit').value),
+  };
+  Object.keys(params).forEach(k => params[k] === undefined && delete params[k]);
+
+  try {
+    const result = await window.api.searchLogs(orgId, params);
+    const entries = result.entries || result;
+    document.getElementById('result-count').textContent = `${entries.length} entries`;
+    renderLogs(entries);
+  } catch(e) { showToast('Search failed: ' + e.message, 'error'); }
+}
+
+function renderLogs(entries) {
+  const container = document.getElementById('log-entries');
+  if (!entries.length) {
+    container.innerHTML = `<div style="text-align:center;padding:32px;color:var(--text-muted);">No log entries found</div>`;
+    return;
+  }
+  container.innerHTML = entries.map(e => {
+    const color = LEVEL_COLORS[e.level] || '#8a9ab5';
+    const ts = new Date(e.timestamp).toISOString().replace('T', ' ').substring(0, 19);
+    const msg = wrapEnabled ? e.message : e.message;
+    return `<div class="log-entry" style="display:flex;gap:12px;padding:4px 16px;border-bottom:1px solid var(--border-subtle, #111e2f);align-items:baseline;${wrapEnabled ? '' : 'white-space:nowrap;overflow:hidden;'}">
+      <span style="color:var(--text-muted);min-width:155px;flex-shrink:0;">${ts}</span>
+      <span style="color:${color};min-width:60px;flex-shrink:0;font-weight:600;text-transform:uppercase;font-size:11px;">${e.level}</span>
+      <span style="color:var(--text-secondary);min-width:120px;flex-shrink:0;">${e.source || '—'}</span>
+      <span style="color:var(--text-primary);">${escapeHtml(msg)}</span>
+    </div>`;
+  }).join('');
+}
+
+function escapeHtml(str) {
+  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function clearSearch() {
+  document.getElementById('search-q').value = '';
+  document.getElementById('filter-level').value = '';
+  document.getElementById('filter-source').value = '';
+  searchLogs();
+}
+
+function toggleWrap() {
+  wrapEnabled = !wrapEnabled;
+  document.getElementById('wrap-toggle').textContent = wrapEnabled ? 'No Wrap' : 'Wrap';
+  // Re-render if we have entries
+  document.querySelectorAll('.log-entry').forEach(el => {
+    el.style.whiteSpace = wrapEnabled ? 'normal' : 'nowrap';
+    el.style.overflow = wrapEnabled ? '' : 'hidden';
+  });
+}
+
+// Auto-refresh
+document.getElementById('auto-refresh-toggle').addEventListener('change', function() {
+  if (this.checked) {
+    autoRefreshTimer = setInterval(() => searchLogs(), 5000);
+    searchLogs();
+  } else {
+    clearInterval(autoRefreshTimer);
+  }
+});
+
+document.getElementById('refresh-btn').addEventListener('click', () => { loadStats(); searchLogs(); });
+document.getElementById('search-q').addEventListener('keyup', e => { if (e.key === 'Enter') searchLogs(); });
+
+loadStats();
+searchLogs();
+</script>
+</body>
+</html>

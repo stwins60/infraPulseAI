@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraPulse AI — Proxmox</title>
+<link rel="stylesheet" href="/assets/css/main.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div>
+        <div class="page-title">Proxmox</div>
+        <div class="page-subtitle">Manage Proxmox VE connections and monitor VMs/containers</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary btn-sm" id="add-conn-btn">+ Add Connection</button>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- Connections -->
+      <div style="font-weight:600;font-size:15px;margin-bottom:10px;">Connections</div>
+      <div id="connections-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-bottom:24px;">
+        <div style="color:var(--text-muted);padding:16px;">Loading...</div>
+      </div>
+
+      <!-- Nodes & VMs (shown when a connection is selected) -->
+      <div id="conn-detail" style="display:none;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          <span style="font-weight:600;font-size:15px;" id="selected-conn-name">Connection</span>
+          <button class="btn btn-secondary btn-sm" id="sync-btn">↻ Sync Now</button>
+        </div>
+
+        <!-- Nodes -->
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">Nodes</div>
+        <div id="nodes-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:20px;"></div>
+
+        <!-- VMs/Containers -->
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+          <span style="font-weight:600;font-size:15px;">Virtual Machines &amp; Containers</span>
+          <select class="form-select" style="width:auto;padding:4px 10px;font-size:13px;margin-left:auto;" id="vm-type-filter">
+            <option value="">All Types</option>
+            <option value="qemu">QEMU VMs</option>
+            <option value="lxc">LXC Containers</option>
+          </select>
+        </div>
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr><th>Name</th><th>Type</th><th>VMID</th><th>Node</th><th>Status</th><th>CPU</th><th>Memory</th><th>Disk</th><th>Uptime</th></tr>
+              </thead>
+              <tbody id="vms-tbody">
+                <tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-muted);">Select a connection to view VMs</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Connection Modal -->
+<div class="modal-overlay" id="conn-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="conn-modal-title">Add Proxmox Connection</div>
+      <button class="modal-close" onclick="closeConnModal()">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Connection Name <span style="color:var(--red);">*</span></label>
+      <input type="text" class="form-input" id="conn-name" placeholder="e.g. Home Lab">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Host / IP <span style="color:var(--red);">*</span></label>
+      <input type="text" class="form-input" id="conn-host" placeholder="192.168.1.100">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Port</label>
+      <input type="number" class="form-input" id="conn-port" value="8006">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label class="form-label">Username <span style="color:var(--red);">*</span></label>
+        <input type="text" class="form-input" id="conn-user" placeholder="root@pam">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Auth Type</label>
+        <select class="form-select" id="conn-auth-type" onchange="toggleAuthFields()">
+          <option value="api_token">API Token</option>
+          <option value="password">Password</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" id="field-token">
+      <label class="form-label">API Token ID <span style="color:var(--red);">*</span></label>
+      <input type="text" class="form-input" id="conn-token-id" placeholder="monitoring@pve!mytoken">
+    </div>
+    <div class="form-group" id="field-token-secret">
+      <label class="form-label">API Token Secret <span style="color:var(--red);">*</span></label>
+      <input type="password" class="form-input" id="conn-token-secret" placeholder="••••••••">
+    </div>
+    <div class="form-group" id="field-password" style="display:none;">
+      <label class="form-label">Password <span style="color:var(--red);">*</span></label>
+      <input type="password" class="form-input" id="conn-password">
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="conn-verify-ssl" checked>
+        <span>Verify SSL Certificate</span>
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeConnModal()">Cancel</button>
+      <button class="btn btn-secondary" id="test-conn-btn" onclick="testConnection()">Test</button>
+      <button class="btn btn-primary" id="save-conn-btn" onclick="saveConnection()">Save Connection</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+<script src="/assets/js/api-client.js"></script>
+<script src="/assets/js/components.js"></script>
+<script>
+if (!initPage('proxmox')) throw new Error();
+const orgId = getCurrentOrg();
+let selectedConnId = null;
+let allVMs = [];
+
+function toggleAuthFields() {
+  const t = document.getElementById('conn-auth-type').value;
+  document.getElementById('field-token').style.display = t === 'api_token' ? '' : 'none';
+  document.getElementById('field-token-secret').style.display = t === 'api_token' ? '' : 'none';
+  document.getElementById('field-password').style.display = t === 'password' ? '' : 'none';
+}
+
+async function loadConnections() {
+  try {
+    const conns = await window.api.getProxmoxConnections(orgId);
+    const container = document.getElementById('connections-list');
+
+    if (!conns.length) {
+      container.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">🖥️</div><div class="empty-state-title">No Proxmox connections</div><div class="empty-state-desc">Connect your Proxmox VE cluster to monitor VMs and containers</div><button class="btn btn-primary" onclick="document.getElementById('add-conn-btn').click()">+ Add Connection</button></div>`;
+      return;
+    }
+
+    container.innerHTML = conns.map(c => `
+      <div class="card" style="padding:16px;cursor:pointer;border:2px solid ${selectedConnId === c.id ? 'var(--accent)' : 'transparent'};" onclick="selectConnection('${c.id}', '${c.name}')">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
+          <div style="font-weight:600;">${c.name}</div>
+          <span class="badge badge-${c.status === 'active' ? 'online' : 'offline'}">${c.status}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);">https://${c.host}:${c.port}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${c.username} · ${c.auth_type}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Last sync: ${c.last_sync_at ? formatRelativeTime(c.last_sync_at) : 'Never'}</div>
+        <div style="display:flex;gap:6px;margin-top:10px;" onclick="event.stopPropagation()">
+          <button class="btn btn-secondary btn-xs" onclick="testConn('${c.id}')">Test</button>
+          <button class="btn btn-secondary btn-xs" onclick="syncConn('${c.id}')">Sync</button>
+        </div>
+      </div>
+    `).join('');
+
+    if (!selectedConnId && conns.length > 0) {
+      selectConnection(conns[0].id, conns[0].name);
+    }
+  } catch(e) { showToast('Failed to load connections: ' + e.message, 'error'); }
+}
+
+async function selectConnection(connId, connName) {
+  selectedConnId = connId;
+  document.getElementById('selected-conn-name').textContent = connName;
+  document.getElementById('conn-detail').style.display = '';
+  loadNodes(connId);
+  loadVMs(connId);
+  loadConnections(); // refresh to update border
+}
+
+async function loadNodes(connId) {
+  try {
+    const nodes = await window.api.getProxmoxNodes(orgId, connId);
+    document.getElementById('nodes-list').innerHTML = nodes.map(n => `
+      <div class="card" style="padding:12px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span style="font-weight:600;">${n.node_name}</span>
+          <span class="badge badge-${n.status === 'online' ? 'online' : 'offline'}">${n.status}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);">
+          CPU: ${n.cpu_cores || '—'} cores${n.cpu_usage_percent != null ? ' · ' + n.cpu_usage_percent.toFixed(1) + '%' : ''}<br>
+          RAM: ${n.memory_total_bytes ? formatBytes(n.memory_total_bytes) : '—'}<br>
+          Uptime: ${n.uptime_seconds ? formatUptime(n.uptime_seconds) : '—'}
+        </div>
+      </div>
+    `).join('') || '<div style="color:var(--text-muted);font-size:13px;">No nodes found</div>';
+  } catch {}
+}
+
+async function loadVMs(connId) {
+  const vmType = document.getElementById('vm-type-filter').value;
+  try {
+    allVMs = await window.api.getProxmoxVMs(orgId, connId, vmType);
+    renderVMs();
+  } catch(e) { showToast('Failed to load VMs: ' + e.message, 'error'); }
+}
+
+function renderVMs() {
+  const tbody = document.getElementById('vms-tbody');
+  if (!allVMs.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-muted);">No VMs found. Try syncing the connection.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = allVMs.map(vm => `
+    <tr>
+      <td style="font-weight:500;">${vm.name || '—'}</td>
+      <td><span class="badge badge-info">${vm.vm_type}</span></td>
+      <td style="font-size:12px;color:var(--text-secondary);">${vm.vmid}</td>
+      <td style="font-size:12px;">${vm.node || '—'}</td>
+      <td><span class="badge badge-${vm.status === 'running' ? 'online' : 'offline'}">${vm.status}</span></td>
+      <td style="font-size:12px;">${vm.cpu_usage_percent != null ? vm.cpu_usage_percent.toFixed(1) + '%' : '—'}</td>
+      <td style="font-size:12px;">${vm.memory_bytes ? formatBytes(vm.memory_bytes) : '—'}</td>
+      <td style="font-size:12px;">${vm.disk_bytes ? formatBytes(vm.disk_bytes) : '—'}</td>
+      <td style="font-size:12px;">${vm.uptime_seconds ? formatUptime(vm.uptime_seconds) : '—'}</td>
+    </tr>
+  `).join('');
+}
+
+async function testConn(connId) {
+  showToast('Testing connection...', 'info');
+  try {
+    const r = await window.api.testProxmoxConnection(orgId, connId);
+    showToast(r.message || 'Connection successful!', r.success ? 'success' : 'error');
+  } catch(e) { showToast('Test failed: ' + e.message, 'error'); }
+}
+
+async function syncConn(connId) {
+  showToast('Syncing...', 'info');
+  try {
+    await window.api.syncProxmoxConnection(orgId, connId);
+    showToast('Sync started!', 'success');
+    setTimeout(() => loadConnections(), 2000);
+  } catch(e) { showToast('Sync failed: ' + e.message, 'error'); }
+}
+
+async function testConnection() {
+  showToast('Testing...', 'info');
+  const payload = buildConnPayload();
+  try {
+    // Quick test via a temp save attempt — backend tests on create
+    showToast('Enter all fields and click Save to test', 'info');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+function buildConnPayload() {
+  const authType = document.getElementById('conn-auth-type').value;
+  return {
+    name: document.getElementById('conn-name').value,
+    host: document.getElementById('conn-host').value,
+    port: parseInt(document.getElementById('conn-port').value) || 8006,
+    username: document.getElementById('conn-user').value,
+    auth_type: authType,
+    api_token_id: authType === 'api_token' ? document.getElementById('conn-token-id').value : null,
+    api_token_secret: authType === 'api_token' ? document.getElementById('conn-token-secret').value : null,
+    password: authType === 'password' ? document.getElementById('conn-password').value : null,
+    verify_ssl: document.getElementById('conn-verify-ssl').checked,
+  };
+}
+
+async function saveConnection() {
+  const payload = buildConnPayload();
+  if (!payload.name || !payload.host || !payload.username) { showToast('Please fill required fields', 'error'); return; }
+  document.getElementById('save-conn-btn').disabled = true;
+  try {
+    await window.api.createProxmoxConnection(orgId, payload);
+    showToast('Connection added!', 'success');
+    closeConnModal();
+    loadConnections();
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+  finally { document.getElementById('save-conn-btn').disabled = false; }
+}
+
+function closeConnModal() { document.getElementById('conn-modal').classList.remove('open'); }
+
+document.getElementById('add-conn-btn').addEventListener('click', () => {
+  document.getElementById('conn-modal').classList.add('open');
+});
+document.getElementById('sync-btn').addEventListener('click', () => {
+  if (selectedConnId) syncConn(selectedConnId);
+});
+document.getElementById('vm-type-filter').addEventListener('change', () => {
+  if (selectedConnId) loadVMs(selectedConnId);
+});
+
+loadConnections();
+</script>
+</body>
+</html>

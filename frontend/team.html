@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraPulse AI — Team</title>
+<link rel="stylesheet" href="/assets/css/main.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div>
+        <div class="page-title">Team</div>
+        <div class="page-subtitle">Manage organization members and invitations</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary btn-sm" id="invite-btn">+ Invite Member</button>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- Tabs -->
+      <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:16px;">
+        <button class="tab-btn active" data-tab="members">Members</button>
+        <button class="tab-btn" data-tab="invites">Pending Invites</button>
+      </div>
+
+      <!-- Members -->
+      <div id="tab-members">
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Member</th><th>Email</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead>
+              <tbody id="members-tbody"><tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pending Invites -->
+      <div id="tab-invites" style="display:none;">
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Email</th><th>Role</th><th>Invited By</th><th>Expires</th><th>Status</th></tr></thead>
+              <tbody id="invites-tbody"><tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No pending invites</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Invite Modal -->
+<div class="modal-overlay" id="invite-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Invite Team Member</div>
+      <button class="modal-close" onclick="closeModal('invite-modal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email Address <span style="color:var(--red);">*</span></label>
+      <input type="email" class="form-input" id="invite-email" placeholder="colleague@example.com">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Role</label>
+      <select class="form-select" id="invite-role">
+        <option value="viewer">Viewer — Read-only access</option>
+        <option value="operator" selected>Operator — Can manage alerts and incidents</option>
+        <option value="admin">Admin — Full organization access</option>
+      </select>
+    </div>
+    <div style="background:var(--bg-secondary);border-radius:var(--radius);padding:12px;font-size:12px;color:var(--text-secondary);margin-bottom:16px;">
+      An invitation email will be sent with a link to join InfraPulse AI.
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('invite-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="sendInvite()">Send Invitation</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+<script src="/assets/js/api-client.js"></script>
+<script src="/assets/js/components.js"></script>
+<script>
+if (!initPage('team')) throw new Error();
+const orgId = getCurrentOrg();
+const currentUser = getUserInfo();
+
+const ROLE_BADGES = { owner: 'badge-critical', admin: 'badge-high', operator: 'badge-medium', viewer: 'badge-info' };
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.getElementById('tab-members').style.display = tab === 'members' ? '' : 'none';
+    document.getElementById('tab-invites').style.display = tab === 'invites' ? '' : 'none';
+    if (tab === 'invites') loadInvites();
+  });
+});
+
+async function loadMembers() {
+  try {
+    const members = await window.api.getMembers(orgId);
+    const tbody = document.getElementById('members-tbody');
+    if (!members.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">No members found</td></tr>';
+      return;
+    }
+    tbody.innerHTML = members.map(m => {
+      const isMe = m.user_id === currentUser.id || m.email === currentUser.email;
+      return `
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:32px;height:32px;background:var(--bg-secondary);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;">${(m.full_name || m.email || '?')[0].toUpperCase()}</div>
+              <div>
+                <div style="font-weight:500;">${m.full_name || '—'} ${isMe ? '<span style="font-size:11px;color:var(--text-muted);">(you)</span>' : ''}</div>
+              </div>
+            </div>
+          </td>
+          <td style="font-size:13px;">${m.email || '—'}</td>
+          <td><span class="badge ${ROLE_BADGES[m.role] || 'badge-info'}">${m.role}</span></td>
+          <td style="font-size:12px;color:var(--text-muted);">${m.joined_at ? new Date(m.joined_at).toLocaleDateString() : '—'}</td>
+          <td>
+            ${!isMe && m.role !== 'owner' ? `<button class="btn btn-secondary btn-xs" style="color:var(--red);" onclick="removeMember('${m.user_id}', '${m.full_name || m.email}')">Remove</button>` : ''}
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch(e) { showToast('Failed to load members: ' + e.message, 'error'); }
+}
+
+async function loadInvites() {
+  // Invites endpoint may not be separately listed — show placeholder
+  document.getElementById('invites-tbody').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">Pending invites will appear here</td></tr>';
+}
+
+async function sendInvite() {
+  const email = document.getElementById('invite-email').value.trim();
+  const role = document.getElementById('invite-role').value;
+  if (!email) { showToast('Email is required', 'error'); return; }
+  try {
+    await window.api.inviteUser(orgId, email, role);
+    showToast(`Invitation sent to ${email}`, 'success');
+    closeModal('invite-modal');
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+async function removeMember(userId, name) {
+  if (!confirm(`Remove ${name} from the organization?`)) return;
+  showToast('Member removal not yet implemented in API', 'info');
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+document.getElementById('invite-btn').addEventListener('click', () => document.getElementById('invite-modal').classList.add('open'));
+
+loadMembers();
+</script>
+</body>
+</html>

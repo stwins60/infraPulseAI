@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraPulse AI — Alerts</title>
+<link rel="stylesheet" href="/assets/css/main.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div>
+        <div class="page-title">Alerts</div>
+        <div class="page-subtitle">Active alerts and alert rule management</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-secondary btn-sm" id="rules-btn">⚙️ Rules</button>
+        <button class="btn btn-primary btn-sm" id="new-rule-btn">+ New Rule</button>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- Stats -->
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <div class="card" style="flex:1;min-width:120px;padding:12px 16px;">
+          <div style="font-size:11px;color:var(--red);">Firing</div>
+          <div style="font-weight:700;font-size:22px;color:var(--red);" id="stat-firing">—</div>
+        </div>
+        <div class="card" style="flex:1;min-width:120px;padding:12px 16px;">
+          <div style="font-size:11px;color:var(--amber);">Acknowledged</div>
+          <div style="font-weight:700;font-size:22px;color:var(--amber);" id="stat-acked">—</div>
+        </div>
+        <div class="card" style="flex:1;min-width:120px;padding:12px 16px;">
+          <div style="font-size:11px;color:var(--green);">Resolved (24h)</div>
+          <div style="font-weight:700;font-size:22px;color:var(--green);" id="stat-resolved">—</div>
+        </div>
+        <div class="card" style="flex:1;min-width:120px;padding:12px 16px;">
+          <div style="font-size:11px;color:var(--text-muted);">Total Rules</div>
+          <div style="font-weight:700;font-size:22px;" id="stat-rules">—</div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:16px;">
+        <button class="tab-btn active" data-tab="firing">Firing</button>
+        <button class="tab-btn" data-tab="all">All Alerts</button>
+        <button class="tab-btn" data-tab="rules">Rules</button>
+      </div>
+
+      <!-- Firing alerts tab -->
+      <div id="tab-firing">
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <select class="form-select" style="width:auto;padding:6px 12px;" id="filter-severity">
+            <option value="">All Severity</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="loadAlerts('firing')">Apply</button>
+        </div>
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Alert</th><th>Severity</th><th>Server</th><th>Value</th><th>Fired</th><th>Actions</th></tr></thead>
+              <tbody id="firing-tbody"><tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted);">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- All alerts tab -->
+      <div id="tab-all" style="display:none;">
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <select class="form-select" style="width:auto;padding:6px 12px;" id="filter-status-all">
+            <option value="">All Status</option>
+            <option value="firing">Firing</option>
+            <option value="acknowledged">Acknowledged</option>
+            <option value="resolved">Resolved</option>
+          </select>
+          <select class="form-select" style="width:auto;padding:6px 12px;" id="filter-severity-all">
+            <option value="">All Severity</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="loadAllAlerts()">Apply</button>
+        </div>
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Alert</th><th>Severity</th><th>Status</th><th>Server</th><th>Value</th><th>Fired</th><th>Resolved</th><th>Actions</th></tr></thead>
+              <tbody id="all-tbody"><tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rules tab -->
+      <div id="tab-rules" style="display:none;">
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Rule Name</th><th>Metric</th><th>Condition</th><th>Severity</th><th>Enabled</th><th>Actions</th></tr></thead>
+              <tbody id="rules-tbody"><tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted);">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- New Alert Rule Modal -->
+<div class="modal-overlay" id="rule-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">New Alert Rule</div>
+      <button class="modal-close" onclick="closeModal('rule-modal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Rule Name <span style="color:var(--red);">*</span></label>
+      <input type="text" class="form-input" id="rule-name" placeholder="e.g. High CPU Usage">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label class="form-label">Metric <span style="color:var(--red);">*</span></label>
+        <select class="form-select" id="rule-metric">
+          <option value="cpu_percent">CPU %</option>
+          <option value="memory_percent">Memory %</option>
+          <option value="disk_percent">Disk %</option>
+          <option value="net_bytes_recv">Net RX (bytes/s)</option>
+          <option value="load_average_1m">Load Avg (1m)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Severity</label>
+        <select class="form-select" id="rule-severity">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label class="form-label">Operator</label>
+        <select class="form-select" id="rule-op">
+          <option value="gt">Greater than (&gt;)</option>
+          <option value="gte">Greater or equal (≥)</option>
+          <option value="lt">Less than (&lt;)</option>
+          <option value="lte">Less or equal (≤)</option>
+          <option value="eq">Equal (=)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Threshold <span style="color:var(--red);">*</span></label>
+        <input type="number" class="form-input" id="rule-threshold" placeholder="e.g. 90">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Duration (min)</label>
+        <input type="number" class="form-input" id="rule-duration" value="5">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description</label>
+      <input type="text" class="form-input" id="rule-desc" placeholder="Optional description">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('rule-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRule()">Create Rule</button>
+    </div>
+  </div>
+</div>
+
+<!-- Alert Detail / Ack Modal -->
+<div class="modal-overlay" id="alert-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="alert-modal-title">Alert Detail</div>
+      <button class="modal-close" onclick="closeModal('alert-modal')">✕</button>
+    </div>
+    <div id="alert-modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('alert-modal')">Close</button>
+      <button class="btn btn-amber btn-sm" id="ack-btn">Acknowledge</button>
+      <button class="btn btn-green btn-sm" id="resolve-btn">Resolve</button>
+      <button class="btn btn-primary btn-sm" id="analyze-alert-btn">🤖 AI Analyze</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+<script src="/assets/js/api-client.js"></script>
+<script src="/assets/js/components.js"></script>
+<script>
+if (!initPage('alerts')) throw new Error();
+const orgId = getCurrentOrg();
+let currentAlertId = null;
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    ['firing','all','rules'].forEach(t => document.getElementById('tab-' + t).style.display = t === tab ? '' : 'none');
+    if (tab === 'all') loadAllAlerts();
+    if (tab === 'rules') loadRules();
+  });
+});
+
+async function loadStats() {
+  try {
+    const stats = await window.api.getAlertStats(orgId);
+    document.getElementById('stat-firing').textContent = stats.firing || 0;
+    document.getElementById('stat-acked').textContent = stats.acknowledged || 0;
+    document.getElementById('stat-resolved').textContent = stats.resolved_24h || 0;
+    document.getElementById('stat-rules').textContent = stats.total_rules || 0;
+  } catch {}
+}
+
+async function loadAlerts(status = 'firing') {
+  const severity = document.getElementById('filter-severity').value;
+  const params = { status };
+  if (severity) params.severity = severity;
+  try {
+    const alerts = await window.api.getAlerts(orgId, params);
+    const tbody = document.getElementById('firing-tbody');
+    if (!alerts.length) {
+      tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">✅</div><div class="empty-state-title">No firing alerts</div><div class="empty-state-desc">Your infrastructure looks healthy</div></div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = alerts.map(a => `
+      <tr>
+        <td>
+          <div style="font-weight:600;">${a.title}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${a.rule_name || ''}</div>
+        </td>
+        <td>${getSeverityBadge(a.severity)}</td>
+        <td style="font-size:12px;">${a.server_name || a.server_id || '—'}</td>
+        <td style="font-size:12px;font-family:monospace;">${a.current_value != null ? a.current_value.toFixed(2) : '—'}</td>
+        <td style="font-size:12px;color:var(--text-muted);">${formatRelativeTime(a.fired_at)}</td>
+        <td>
+          <div style="display:flex;gap:4px;">
+            <button class="btn btn-secondary btn-xs" onclick="openAlert('${a.id}')">View</button>
+            <button class="btn btn-secondary btn-xs" onclick="quickAck('${a.id}')">Ack</button>
+            <button class="btn btn-secondary btn-xs" onclick="analyzeAlert('${a.id}')">🤖</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch(e) { showToast('Failed to load alerts: ' + e.message, 'error'); }
+}
+
+async function loadAllAlerts() {
+  const status = document.getElementById('filter-status-all').value;
+  const severity = document.getElementById('filter-severity-all').value;
+  const params = {};
+  if (status) params.status = status;
+  if (severity) params.severity = severity;
+  try {
+    const alerts = await window.api.getAlerts(orgId, params);
+    const tbody = document.getElementById('all-tbody');
+    tbody.innerHTML = alerts.map(a => `
+      <tr>
+        <td><div style="font-weight:600;">${a.title}</div></td>
+        <td>${getSeverityBadge(a.severity)}</td>
+        <td>${getStatusBadge(a.status)}</td>
+        <td style="font-size:12px;">${a.server_name || '—'}</td>
+        <td style="font-size:12px;font-family:monospace;">${a.current_value != null ? a.current_value.toFixed(2) : '—'}</td>
+        <td style="font-size:12px;color:var(--text-muted);">${formatRelativeTime(a.fired_at)}</td>
+        <td style="font-size:12px;color:var(--text-muted);">${a.resolved_at ? formatRelativeTime(a.resolved_at) : '—'}</td>
+        <td><button class="btn btn-secondary btn-xs" onclick="openAlert('${a.id}')">View</button></td>
+      </tr>
+    `).join('') || '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted);">No alerts found</td></tr>';
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+async function loadRules() {
+  try {
+    const rules = await window.api.getAlertRules(orgId);
+    document.getElementById('stat-rules').textContent = rules.length;
+    const tbody = document.getElementById('rules-tbody');
+    tbody.innerHTML = rules.map(r => `
+      <tr>
+        <td><div style="font-weight:600;">${r.name}</div><div style="font-size:11px;color:var(--text-muted);">${r.description || ''}</div></td>
+        <td style="font-size:12px;font-family:monospace;">${r.metric_name}</td>
+        <td style="font-size:12px;">${r.operator} ${r.threshold} for ${r.duration_minutes}m</td>
+        <td>${getSeverityBadge(r.severity)}</td>
+        <td><span class="badge ${r.is_enabled ? 'badge-online' : 'badge-offline'}">${r.is_enabled ? 'Enabled' : 'Disabled'}</span></td>
+        <td><button class="btn btn-secondary btn-xs">Edit</button></td>
+      </tr>
+    `).join('') || '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">No alert rules. Create one to start monitoring.</td></tr>';
+  } catch {}
+}
+
+async function openAlert(alertId) {
+  currentAlertId = alertId;
+  try {
+    const a = await window.api.getAlert(orgId, alertId);
+    document.getElementById('alert-modal-title').textContent = a.title;
+    document.getElementById('alert-modal-body').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 0 16px;">
+        ${[['Status', getStatusBadge(a.status)], ['Severity', getSeverityBadge(a.severity)], ['Server', a.server_name || a.server_id || '—'], ['Value', a.current_value != null ? a.current_value.toFixed(4) : '—'], ['Fired', a.fired_at ? new Date(a.fired_at).toLocaleString() : '—'], ['Resolved', a.resolved_at ? new Date(a.resolved_at).toLocaleString() : '—']].map(([k,v]) => `<div><div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">${k}</div><div>${v}</div></div>`).join('')}
+      </div>
+      ${a.message ? `<div style="background:var(--bg-secondary);border-radius:var(--radius);padding:12px;font-size:13px;color:var(--text-secondary);">${a.message}</div>` : ''}
+    `;
+    document.getElementById('ack-btn').onclick = () => updateAlertStatus(alertId, 'acknowledged');
+    document.getElementById('resolve-btn').onclick = () => updateAlertStatus(alertId, 'resolved');
+    document.getElementById('analyze-alert-btn').onclick = () => analyzeAlert(alertId);
+    document.getElementById('alert-modal').classList.add('open');
+  } catch(e) { showToast('Failed to load alert: ' + e.message, 'error'); }
+}
+
+async function quickAck(alertId) {
+  try {
+    await window.api.updateAlertStatus(orgId, alertId, 'acknowledged');
+    showToast('Alert acknowledged', 'success');
+    loadAlerts('firing');
+    loadStats();
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+async function updateAlertStatus(alertId, status) {
+  try {
+    await window.api.updateAlertStatus(orgId, alertId, status);
+    showToast(`Alert ${status}`, 'success');
+    closeModal('alert-modal');
+    loadAlerts('firing');
+    loadStats();
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+async function analyzeAlert(alertId) {
+  showToast('Requesting AI analysis...', 'info');
+  try {
+    await window.api.analyzeAlert(orgId, alertId);
+    showToast('AI analysis complete! Check AI Operations.', 'success');
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+async function saveRule() {
+  const payload = {
+    name: document.getElementById('rule-name').value,
+    metric_name: document.getElementById('rule-metric').value,
+    operator: document.getElementById('rule-op').value,
+    threshold: parseFloat(document.getElementById('rule-threshold').value),
+    duration_minutes: parseInt(document.getElementById('rule-duration').value) || 5,
+    severity: document.getElementById('rule-severity').value,
+    description: document.getElementById('rule-desc').value || null,
+  };
+  if (!payload.name || !payload.threshold) { showToast('Please fill required fields', 'error'); return; }
+  try {
+    await window.api.createAlertRule(orgId, payload);
+    showToast('Rule created!', 'success');
+    closeModal('rule-modal');
+    loadStats();
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+document.getElementById('new-rule-btn').addEventListener('click', () => document.getElementById('rule-modal').classList.add('open'));
+document.getElementById('rules-btn').addEventListener('click', () => {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('[data-tab="rules"]').classList.add('active');
+  ['firing','all','rules'].forEach(t => document.getElementById('tab-' + t).style.display = t === 'rules' ? '' : 'none');
+  loadRules();
+});
+
+loadStats();
+loadAlerts('firing');
+</script>
+</body>
+</html>

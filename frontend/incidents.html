@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraPulse AI — Incidents</title>
+<link rel="stylesheet" href="/assets/css/main.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div>
+        <div class="page-title">Incidents</div>
+        <div class="page-subtitle">Track and manage infrastructure incidents</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary btn-sm" id="new-incident-btn">+ New Incident</button>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- Stats -->
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <div class="card" style="flex:1;min-width:120px;padding:12px 16px;">
+          <div style="font-size:11px;color:var(--red);">Open</div>
+          <div style="font-weight:700;font-size:22px;color:var(--red);" id="stat-open">—</div>
+        </div>
+        <div class="card" style="flex:1;min-width:120px;padding:12px 16px;">
+          <div style="font-size:11px;color:var(--amber);">Investigating</div>
+          <div style="font-weight:700;font-size:22px;color:var(--amber);" id="stat-investigating">—</div>
+        </div>
+        <div class="card" style="flex:1;min-width:120px;padding:12px 16px;">
+          <div style="font-size:11px;color:var(--green);">Resolved</div>
+          <div style="font-weight:700;font-size:22px;color:var(--green);" id="stat-resolved">—</div>
+        </div>
+        <div class="card" style="flex:1;min-width:120px;padding:12px 16px;">
+          <div style="font-size:11px;color:var(--text-muted);">Total</div>
+          <div style="font-weight:700;font-size:22px;" id="stat-total">—</div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+        <select class="form-select" style="width:auto;padding:6px 12px;" id="filter-status">
+          <option value="">All Status</option>
+          <option value="open">Open</option>
+          <option value="investigating">Investigating</option>
+          <option value="identified">Identified</option>
+          <option value="monitoring">Monitoring</option>
+          <option value="resolved">Resolved</option>
+        </select>
+        <select class="form-select" style="width:auto;padding:6px 12px;" id="filter-severity">
+          <option value="">All Severity</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="loadIncidents()">Apply</button>
+      </div>
+
+      <!-- Incidents table -->
+      <div class="card">
+        <div class="table-container">
+          <table>
+            <thead><tr><th>Incident</th><th>Severity</th><th>Status</th><th>Alerts</th><th>Opened</th><th>Duration</th><th>Actions</th></tr></thead>
+            <tbody id="incidents-tbody"><tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted);">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- New Incident Modal -->
+<div class="modal-overlay" id="incident-modal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <div class="modal-title" id="incident-modal-title">New Incident</div>
+      <button class="modal-close" onclick="closeModal('incident-modal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Title <span style="color:var(--red);">*</span></label>
+      <input type="text" class="form-input" id="inc-title" placeholder="e.g. Database connection pool exhausted">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label class="form-label">Severity</label>
+        <select class="form-select" id="inc-severity">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select class="form-select" id="inc-status">
+          <option value="open">Open</option>
+          <option value="investigating">Investigating</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description</label>
+      <textarea class="form-input" id="inc-description" rows="3" placeholder="Describe the incident..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('incident-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveIncident()">Create Incident</button>
+    </div>
+  </div>
+</div>
+
+<!-- Incident Detail Modal -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-header">
+      <div class="modal-title" id="detail-modal-title">Incident Detail</div>
+      <button class="modal-close" onclick="closeModal('detail-modal')">✕</button>
+    </div>
+    <div id="detail-modal-body" style="max-height:70vh;overflow-y:auto;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('detail-modal')">Close</button>
+      <button class="btn btn-primary btn-sm" id="analyze-inc-btn">🤖 AI Analyze</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+<script src="/assets/js/api-client.js"></script>
+<script src="/assets/js/components.js"></script>
+<script>
+if (!initPage('incidents')) throw new Error();
+const orgId = getCurrentOrg();
+
+function incidentDuration(openedAt, resolvedAt) {
+  const start = new Date(openedAt);
+  const end = resolvedAt ? new Date(resolvedAt) : new Date();
+  const diff = (end - start) / 1000;
+  if (diff < 3600) return Math.round(diff / 60) + 'm';
+  if (diff < 86400) return Math.round(diff / 3600) + 'h';
+  return Math.round(diff / 86400) + 'd';
+}
+
+async function loadIncidents() {
+  const status = document.getElementById('filter-status').value;
+  const severity = document.getElementById('filter-severity').value;
+  const params = {};
+  if (status) params.status = status;
+  if (severity) params.severity = severity;
+  try {
+    const incidents = await window.api.getIncidents(orgId, params);
+    updateStats(incidents);
+
+    const tbody = document.getElementById('incidents-tbody');
+    if (!incidents.length) {
+      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">🚨</div><div class="empty-state-title">No incidents found</div><div class="empty-state-desc">Incidents are created manually or automatically from critical alerts</div></div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = incidents.map(i => `
+      <tr style="cursor:pointer;" onclick="viewIncident('${i.id}')">
+        <td>
+          <div style="font-weight:600;">${i.title}</div>
+          <div style="font-size:11px;color:var(--text-muted);">#${i.id.substring(0,8)} · ${i.description ? i.description.substring(0,60) + '...' : 'No description'}</div>
+        </td>
+        <td>${getSeverityBadge(i.severity)}</td>
+        <td>${getStatusBadge(i.status)}</td>
+        <td style="font-size:12px;color:var(--text-muted);">${i.alert_count || 0}</td>
+        <td style="font-size:12px;color:var(--text-muted);">${formatRelativeTime(i.opened_at)}</td>
+        <td style="font-size:12px;">${incidentDuration(i.opened_at, i.resolved_at)}</td>
+        <td onclick="event.stopPropagation()">
+          <div style="display:flex;gap:4px;">
+            <button class="btn btn-secondary btn-xs" onclick="viewIncident('${i.id}')">View</button>
+            <button class="btn btn-secondary btn-xs" onclick="analyzeIncident('${i.id}')">🤖</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch(e) { showToast('Failed to load incidents: ' + e.message, 'error'); }
+}
+
+function updateStats(incidents) {
+  document.getElementById('stat-open').textContent = incidents.filter(i => i.status === 'open').length;
+  document.getElementById('stat-investigating').textContent = incidents.filter(i => i.status === 'investigating').length;
+  document.getElementById('stat-resolved').textContent = incidents.filter(i => i.status === 'resolved').length;
+  document.getElementById('stat-total').textContent = incidents.length;
+}
+
+async function viewIncident(incidentId) {
+  try {
+    const i = await window.api.getIncident?.(orgId, incidentId) || {};
+    document.getElementById('detail-modal-title').textContent = i.title || 'Incident';
+    document.getElementById('detail-modal-body').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 0 16px;">
+        ${[['Status', getStatusBadge(i.status)], ['Severity', getSeverityBadge(i.severity)], ['Opened', i.opened_at ? new Date(i.opened_at).toLocaleString() : '—'], ['Duration', incidentDuration(i.opened_at, i.resolved_at)], ['Resolved', i.resolved_at ? new Date(i.resolved_at).toLocaleString() : '—'], ['Alerts', i.alert_count || 0]].map(([k,v]) => `<div><div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">${k}</div><div>${v}</div></div>`).join('')}
+      </div>
+      ${i.description ? `<div style="background:var(--bg-secondary);border-radius:var(--radius);padding:12px;font-size:13px;margin-bottom:16px;">${i.description}</div>` : ''}
+      ${i.root_cause ? `<div style="margin-bottom:8px;"><div style="font-weight:600;margin-bottom:4px;">Root Cause</div><div style="font-size:13px;color:var(--text-secondary);">${i.root_cause}</div></div>` : ''}
+      ${i.resolution ? `<div><div style="font-weight:600;margin-bottom:4px;">Resolution</div><div style="font-size:13px;color:var(--text-secondary);">${i.resolution}</div></div>` : ''}
+    `;
+    document.getElementById('analyze-inc-btn').onclick = () => analyzeIncident(incidentId);
+    document.getElementById('detail-modal').classList.add('open');
+  } catch(e) {
+    showToast('Failed to load incident: ' + e.message, 'error');
+  }
+}
+
+async function saveIncident() {
+  const payload = {
+    title: document.getElementById('inc-title').value,
+    severity: document.getElementById('inc-severity').value,
+    status: document.getElementById('inc-status').value,
+    description: document.getElementById('inc-description').value || null,
+  };
+  if (!payload.title) { showToast('Title is required', 'error'); return; }
+  try {
+    await window.api.createIncident(orgId, payload);
+    showToast('Incident created!', 'success');
+    closeModal('incident-modal');
+    loadIncidents();
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+async function analyzeIncident(incidentId) {
+  showToast('Requesting AI analysis...', 'info');
+  try {
+    await window.api.analyzeIncident(orgId, incidentId);
+    showToast('AI analysis complete! Check AI Operations.', 'success');
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+document.getElementById('new-incident-btn').addEventListener('click', () => document.getElementById('incident-modal').classList.add('open'));
+
+// Expose getIncident if not already there
+if (!window.api.getIncident) {
+  window.api.getIncident = (orgId, incidentId) => window.api.get(`/organizations/${orgId}/incidents/${incidentId}`);
+}
+
+loadIncidents();
+</script>
+</body>
+</html>

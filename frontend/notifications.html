@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraPulse AI — Notifications</title>
+<link rel="stylesheet" href="/assets/css/main.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div>
+        <div class="page-title">Notifications</div>
+        <div class="page-subtitle">Configure alert notification channels and routing policies</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary btn-sm" id="add-channel-btn">+ Add Channel</button>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- Tabs -->
+      <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:16px;">
+        <button class="tab-btn active" data-tab="channels">Channels</button>
+        <button class="tab-btn" data-tab="policies">Routing Policies</button>
+      </div>
+
+      <!-- Channels tab -->
+      <div id="tab-channels">
+        <div id="channels-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
+          <div style="color:var(--text-muted);padding:16px;">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Policies tab -->
+      <div id="tab-policies" style="display:none;">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+          <button class="btn btn-primary btn-sm" id="add-policy-btn">+ New Policy</button>
+        </div>
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Policy Name</th><th>Channels</th><th>Severity Filter</th><th>Enabled</th><th>Actions</th></tr></thead>
+              <tbody id="policies-tbody"><tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Channel Modal -->
+<div class="modal-overlay" id="channel-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Add Notification Channel</div>
+      <button class="modal-close" onclick="closeModal('channel-modal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Channel Name <span style="color:var(--red);">*</span></label>
+      <input type="text" class="form-input" id="ch-name" placeholder="e.g. #ops-alerts">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Channel Type</label>
+      <select class="form-select" id="ch-type" onchange="toggleChannelFields()">
+        <option value="slack">Slack</option>
+        <option value="email">Email</option>
+        <option value="webhook">Webhook</option>
+        <option value="pagerduty">PagerDuty</option>
+      </select>
+    </div>
+
+    <!-- Slack -->
+    <div id="ch-slack-fields">
+      <div class="form-group">
+        <label class="form-label">Webhook URL <span style="color:var(--red);">*</span></label>
+        <input type="text" class="form-input" id="ch-slack-url" placeholder="https://hooks.slack.com/services/...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Channel (optional)</label>
+        <input type="text" class="form-input" id="ch-slack-channel" placeholder="#alerts">
+      </div>
+    </div>
+
+    <!-- Email -->
+    <div id="ch-email-fields" style="display:none;">
+      <div class="form-group">
+        <label class="form-label">Recipient Email(s) <span style="color:var(--red);">*</span></label>
+        <input type="text" class="form-input" id="ch-email-to" placeholder="ops@example.com, team@example.com">
+      </div>
+    </div>
+
+    <!-- Webhook -->
+    <div id="ch-webhook-fields" style="display:none;">
+      <div class="form-group">
+        <label class="form-label">Webhook URL <span style="color:var(--red);">*</span></label>
+        <input type="text" class="form-input" id="ch-webhook-url" placeholder="https://example.com/webhook">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Secret Header (optional)</label>
+        <input type="text" class="form-input" id="ch-webhook-secret" placeholder="X-Secret: value">
+      </div>
+    </div>
+
+    <!-- PagerDuty -->
+    <div id="ch-pagerduty-fields" style="display:none;">
+      <div class="form-group">
+        <label class="form-label">Integration Key <span style="color:var(--red);">*</span></label>
+        <input type="password" class="form-input" id="ch-pd-key" placeholder="••••••••">
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('channel-modal')">Cancel</button>
+      <button class="btn btn-secondary" onclick="testChannel()">Test</button>
+      <button class="btn btn-primary" onclick="saveChannel()">Save Channel</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+<script src="/assets/js/api-client.js"></script>
+<script src="/assets/js/components.js"></script>
+<script>
+if (!initPage('notifications')) throw new Error();
+const orgId = getCurrentOrg();
+let createdChannelId = null;
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.getElementById('tab-channels').style.display = tab === 'channels' ? '' : 'none';
+    document.getElementById('tab-policies').style.display = tab === 'policies' ? '' : 'none';
+    if (tab === 'policies') loadPolicies();
+  });
+});
+
+function toggleChannelFields() {
+  const type = document.getElementById('ch-type').value;
+  ['slack','email','webhook','pagerduty'].forEach(t => {
+    document.getElementById(`ch-${t}-fields`).style.display = t === type ? '' : 'none';
+  });
+}
+
+async function loadChannels() {
+  try {
+    const channels = await window.api.getNotificationChannels(orgId);
+    const grid = document.getElementById('channels-grid');
+
+    if (!channels.length) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">📢</div><div class="empty-state-title">No notification channels</div><div class="empty-state-desc">Add a Slack, email, or webhook channel to receive alerts</div></div>`;
+      return;
+    }
+
+    const icons = { slack: '💬', email: '📧', webhook: '🔗', pagerduty: '📟' };
+    grid.innerHTML = channels.map(c => `
+      <div class="card" style="padding:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:24px;">${icons[c.channel_type] || '📢'}</span>
+            <div>
+              <div style="font-weight:600;">${c.name}</div>
+              <div style="font-size:12px;color:var(--text-muted);">${c.channel_type}</div>
+            </div>
+          </div>
+          <span class="badge badge-${c.is_enabled ? 'online' : 'offline'}">${c.is_enabled ? 'Active' : 'Disabled'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">${c.description || (c.config?.channel || c.config?.webhook_url || c.config?.to_emails?.join(', ') || '—')}</div>
+        <div style="display:flex;gap:6px;" onclick="event.stopPropagation()">
+          <button class="btn btn-secondary btn-xs" onclick="testExistingChannel('${c.id}')">Test</button>
+          <button class="btn btn-secondary btn-xs" style="color:var(--red);" onclick="deleteChannel('${c.id}', '${c.name}')">Remove</button>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) { showToast('Failed to load channels: ' + e.message, 'error'); }
+}
+
+async function loadPolicies() {
+  try {
+    const policies = await window.api.getNotificationPolicies(orgId);
+    const tbody = document.getElementById('policies-tbody');
+    tbody.innerHTML = policies.map(p => `
+      <tr>
+        <td style="font-weight:500;">${p.name}</td>
+        <td style="font-size:12px;">${p.channel_ids?.length || 0} channel(s)</td>
+        <td style="font-size:12px;">${(p.severity_filter || []).join(', ') || 'All'}</td>
+        <td><span class="badge badge-${p.is_enabled ? 'online' : 'offline'}">${p.is_enabled ? 'Active' : 'Disabled'}</span></td>
+        <td><button class="btn btn-secondary btn-xs">Edit</button></td>
+      </tr>
+    `).join('') || '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">No routing policies configured</td></tr>';
+  } catch {}
+}
+
+function buildChannelPayload() {
+  const type = document.getElementById('ch-type').value;
+  const config = {};
+  if (type === 'slack') {
+    config.webhook_url = document.getElementById('ch-slack-url').value;
+    const ch = document.getElementById('ch-slack-channel').value;
+    if (ch) config.channel = ch;
+  } else if (type === 'email') {
+    config.to_emails = document.getElementById('ch-email-to').value.split(',').map(e => e.trim()).filter(Boolean);
+  } else if (type === 'webhook') {
+    config.webhook_url = document.getElementById('ch-webhook-url').value;
+    const s = document.getElementById('ch-webhook-secret').value;
+    if (s) config.secret = s;
+  } else if (type === 'pagerduty') {
+    config.integration_key = document.getElementById('ch-pd-key').value;
+  }
+  return { name: document.getElementById('ch-name').value, channel_type: type, config };
+}
+
+async function saveChannel() {
+  const payload = buildChannelPayload();
+  if (!payload.name) { showToast('Channel name is required', 'error'); return; }
+  try {
+    const result = await window.api.createNotificationChannel(orgId, payload);
+    createdChannelId = result.id;
+    showToast('Channel added!', 'success');
+    closeModal('channel-modal');
+    loadChannels();
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+async function testChannel() {
+  if (!createdChannelId) { showToast('Save the channel first, then test it', 'info'); return; }
+  await testExistingChannel(createdChannelId);
+}
+
+async function testExistingChannel(channelId) {
+  showToast('Sending test notification...', 'info');
+  try {
+    await window.api.testNotificationChannel(orgId, channelId);
+    showToast('Test notification sent!', 'success');
+  } catch(e) { showToast('Test failed: ' + e.message, 'error'); }
+}
+
+async function deleteChannel(channelId, name) {
+  if (!confirm(`Remove channel "${name}"?`)) return;
+  try {
+    await window.api.deleteNotificationChannel(orgId, channelId);
+    showToast('Channel removed', 'success');
+    loadChannels();
+  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+document.getElementById('add-channel-btn').addEventListener('click', () => {
+  createdChannelId = null;
+  document.getElementById('channel-modal').classList.add('open');
+});
+
+loadChannels();
+</script>
+</body>
+</html>

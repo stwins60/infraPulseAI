@@ -1,0 +1,33 @@
+[Unit]
+Description=InfraPulse AI Monitoring Agent
+Documentation=https://opencode.ai
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=infrapulse
+Group=infrapulse
+ExecStart=/usr/bin/python3 /opt/infrapulse/infrapulse_agent.py --config /etc/infrapulse/agent.conf
+Restart=always
+RestartSec=30
+StartLimitIntervalSec=300
+StartLimitBurst=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=infrapulse-agent
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=/
+ReadWritePaths=/etc/infrapulse
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

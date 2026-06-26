@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraPulse AI — Server Detail</title>
+<link rel="stylesheet" href="/assets/css/main.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar"></aside>
+  <div class="main-content">
+    <div class="topbar">
+      <div>
+        <a href="/servers.html" style="color:var(--text-secondary);font-size:13px;text-decoration:none;">← Servers</a>
+        <div class="page-title" id="server-title">Server Detail</div>
+        <div class="page-subtitle" id="server-subtitle">Loading...</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-secondary btn-sm" id="refresh-btn">↻ Refresh</button>
+        <button class="btn btn-primary btn-sm" id="analyze-btn">🤖 AI Analysis</button>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- Status bar -->
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <div class="card" style="flex:1;min-width:140px;padding:16px 20px;">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Status</div>
+          <div id="s-status"><span class="badge">—</span></div>
+        </div>
+        <div class="card" style="flex:1;min-width:140px;padding:16px 20px;">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Health Score</div>
+          <div id="s-health" class="health-score" style="width:36px;height:36px;font-size:14px;">—</div>
+        </div>
+        <div class="card" style="flex:1;min-width:140px;padding:16px 20px;">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Uptime</div>
+          <div style="font-weight:600;" id="s-uptime">—</div>
+        </div>
+        <div class="card" style="flex:1;min-width:140px;padding:16px 20px;">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">CPU</div>
+          <div style="font-weight:600;" id="s-cpu">—</div>
+        </div>
+        <div class="card" style="flex:1;min-width:140px;padding:16px 20px;">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Memory</div>
+          <div style="font-weight:600;" id="s-mem">—</div>
+        </div>
+        <div class="card" style="flex:1;min-width:140px;padding:16px 20px;">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Disk</div>
+          <div style="font-weight:600;" id="s-disk">—</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;">
+        <!-- Charts column -->
+        <div>
+          <!-- Time range selector -->
+          <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+            <span style="font-size:13px;color:var(--text-secondary);">Time range:</span>
+            <select class="form-select" style="width:auto;padding:4px 10px;font-size:13px;" id="time-range">
+              <option value="1h">1 hour</option>
+              <option value="6h">6 hours</option>
+              <option value="24h" selected>24 hours</option>
+              <option value="7d">7 days</option>
+            </select>
+          </div>
+
+          <div class="card" style="margin-bottom:16px;padding:16px;">
+            <div style="font-weight:600;margin-bottom:12px;">CPU Usage (%)</div>
+            <canvas id="cpu-chart" height="100"></canvas>
+          </div>
+          <div class="card" style="margin-bottom:16px;padding:16px;">
+            <div style="font-weight:600;margin-bottom:12px;">Memory Usage (%)</div>
+            <canvas id="mem-chart" height="100"></canvas>
+          </div>
+          <div class="card" style="padding:16px;">
+            <div style="font-weight:600;margin-bottom:12px;">Network I/O (bytes/s)</div>
+            <canvas id="net-chart" height="100"></canvas>
+          </div>
+        </div>
+
+        <!-- Info column -->
+        <div>
+          <div class="card" style="margin-bottom:16px;padding:16px;">
+            <div style="font-weight:600;margin-bottom:12px;">Server Info</div>
+            <div id="server-info" style="font-size:13px;"></div>
+          </div>
+
+          <div class="card" style="margin-bottom:16px;padding:16px;">
+            <div style="font-weight:600;margin-bottom:12px;">Active Alerts</div>
+            <div id="server-alerts" style="font-size:13px;color:var(--text-muted);">Loading...</div>
+          </div>
+
+          <div class="card" style="padding:16px;">
+            <div style="font-weight:600;margin-bottom:12px;">Recent AI Analyses</div>
+            <div id="server-ai" style="font-size:13px;color:var(--text-muted);">Loading...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+<script src="/assets/js/api-client.js"></script>
+<script src="/assets/js/components.js"></script>
+<script>
+if (!initPage('servers')) throw new Error();
+
+const orgId = getCurrentOrg();
+const serverId = new URLSearchParams(window.location.search).get('id');
+if (!serverId) { window.location.href = '/servers.html'; throw new Error(); }
+
+const CHART_DEFAULTS = {
+  responsive: true,
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { ticks: { color: '#8a9ab5', maxTicksLimit: 6, font: { size: 10 } }, grid: { color: '#1e2d45' } },
+    y: { ticks: { color: '#8a9ab5', font: { size: 10 } }, grid: { color: '#1e2d45' } },
+  },
+  animation: false,
+};
+
+let cpuChart, memChart, netChart;
+
+function makeChart(canvasId, label, color, opts = {}) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [{ label, data: [], borderColor: color, backgroundColor: color + '20', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5 }] },
+    options: { ...CHART_DEFAULTS, ...opts },
+  });
+}
+
+cpuChart = makeChart('cpu-chart', 'CPU %', '#3b82f6', { scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, min: 0, max: 100 } } });
+memChart = makeChart('mem-chart', 'Memory %', '#a855f7', { scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, min: 0, max: 100 } } });
+netChart = makeChart('net-chart', 'Net RX', '#22c55e');
+// Add TX dataset
+netChart.data.datasets.push({ label: 'Net TX', data: [], borderColor: '#f59e0b', backgroundColor: 'transparent', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1.5 });
+netChart.update();
+
+async function loadServer() {
+  try {
+    const s = await window.api.getServer(orgId, serverId);
+    document.getElementById('server-title').textContent = s.display_name || s.hostname;
+    document.getElementById('server-subtitle').textContent = `${s.hostname} • ${s.ip_addresses?.[0] || 'No IP'} • ${s.os_type || 'Unknown OS'}`;
+    document.getElementById('s-status').innerHTML = `<span class="badge badge-${s.status}">${s.status}</span>`;
+    const hEl = document.getElementById('s-health');
+    hEl.textContent = s.health_score || 0;
+    hEl.className = `health-score ${getHealthClass(s.health_score || 0)}`;
+    hEl.style.cssText = 'width:36px;height:36px;font-size:14px;';
+    document.getElementById('s-uptime').textContent = s.uptime_seconds ? formatUptime(s.uptime_seconds) : '—';
+    document.getElementById('s-cpu').textContent = s.last_metrics?.cpu_percent != null ? s.last_metrics.cpu_percent.toFixed(1) + '%' : '—';
+    document.getElementById('s-mem').textContent = s.last_metrics?.memory_percent != null ? s.last_metrics.memory_percent.toFixed(1) + '%' : '—';
+    document.getElementById('s-disk').textContent = s.last_metrics?.disk_percent != null ? s.last_metrics.disk_percent.toFixed(1) + '%' : '—';
+
+    document.getElementById('server-info').innerHTML = [
+      ['Hostname', s.hostname],
+      ['Display Name', s.display_name || '—'],
+      ['Environment', s.environment],
+      ['OS', `${s.os_type || '—'} ${s.os_version || ''}`],
+      ['IPs', (s.ip_addresses || []).join(', ') || '—'],
+      ['Agent Version', s.agent_version || '—'],
+      ['Tags', (s.tags || []).join(', ') || '—'],
+      ['Created', s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'],
+    ].map(([k, v]) => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);"><span style="color:var(--text-muted);">${k}</span><span style="font-weight:500;">${v}</span></div>`).join('');
+  } catch(e) { showToast('Failed to load server: ' + e.message, 'error'); }
+}
+
+async function loadMetrics() {
+  const range = document.getElementById('time-range').value;
+  try {
+    const data = await window.api.getServerMetrics(orgId, serverId, 'cpu_percent,memory_percent,net_bytes_recv,net_bytes_sent', range);
+    const metrics = data.metrics || {};
+
+    function updateChart(chart, metricName) {
+      const series = metrics[metricName] || [];
+      chart.data.labels = series.map(p => new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      chart.data.datasets[0].data = series.map(p => p.value);
+      chart.update('none');
+    }
+
+    updateChart(cpuChart, 'cpu_percent');
+    updateChart(memChart, 'memory_percent');
+
+    // Network chart has 2 datasets
+    const rx = metrics['net_bytes_recv'] || [];
+    const tx = metrics['net_bytes_sent'] || [];
+    netChart.data.labels = rx.map(p => new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    netChart.data.datasets[0].data = rx.map(p => p.value);
+    netChart.data.datasets[1].data = tx.map(p => p.value);
+    netChart.update('none');
+  } catch(e) { /* metrics may not be available yet */ }
+}
+
+async function loadAlerts() {
+  try {
+    const alerts = await window.api.getAlerts(orgId, { server_id: serverId, status: 'firing', limit: 5 });
+    const el = document.getElementById('server-alerts');
+    if (!alerts.length) { el.textContent = 'No active alerts'; el.style.color = 'var(--green)'; return; }
+    el.innerHTML = alerts.map(a => `
+      <div style="padding:6px 0;border-bottom:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${getSeverityBadge(a.severity)}
+          <span style="font-weight:500;">${a.title}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${formatRelativeTime(a.fired_at)}</div>
+      </div>
+    `).join('');
+  } catch {}
+}
+
+async function loadAI() {
+  try {
+    const analyses = await window.api.getAIAnalyses(orgId);
+    const serverAnalyses = analyses.filter(a => a.server_id === serverId).slice(0, 3);
+    const el = document.getElementById('server-ai');
+    if (!serverAnalyses.length) { el.textContent = 'No analyses yet. Click "AI Analysis" to start.'; return; }
+    el.innerHTML = serverAnalyses.map(a => `
+      <div style="padding:8px 0;border-bottom:1px solid var(--border);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-weight:500;font-size:12px;">${a.analysis_type}</span>
+          <span style="font-size:11px;color:var(--text-muted);">${formatRelativeTime(a.created_at)}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.4;">${(a.summary || '').substring(0, 120)}${(a.summary || '').length > 120 ? '...' : ''}</div>
+      </div>
+    `).join('');
+  } catch {}
+}
+
+document.getElementById('analyze-btn').addEventListener('click', async () => {
+  document.getElementById('analyze-btn').disabled = true;
+  document.getElementById('analyze-btn').textContent = '⏳ Analyzing...';
+  try {
+    await window.api.analyzeServer(orgId, serverId);
+    showToast('AI analysis complete!', 'success');
+    loadAI();
+  } catch(e) { showToast('Analysis failed: ' + e.message, 'error'); }
+  finally { document.getElementById('analyze-btn').disabled = false; document.getElementById('analyze-btn').textContent = '🤖 AI Analysis'; }
+});
+
+document.getElementById('refresh-btn').addEventListener('click', () => { loadServer(); loadMetrics(); loadAlerts(); });
+document.getElementById('time-range').addEventListener('change', loadMetrics);
+
+loadServer();
+loadMetrics();
+loadAlerts();
+loadAI();
+
+// Auto-refresh every 30s
+setInterval(() => { loadServer(); loadMetrics(); }, 30000);
+</script>
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraPulse AI — Register</title>
+<link rel="stylesheet" href="/assets/css/main.css">
+<style>
+.auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px; }
+.auth-form-container { width: 100%; max-width: 480px; }
+.auth-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; justify-content: center; }
+.auth-brand .logo { width: 44px; height: 44px; background: var(--gradient-accent); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.auth-brand h1 { font-size: 20px; font-weight: 800; }
+.auth-form-title { font-size: 22px; font-weight: 800; margin-bottom: 8px; text-align: center; }
+.auth-form-subtitle { font-size: 14px; color: var(--text-secondary); margin-bottom: 28px; text-align: center; }
+.error-message { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: var(--red); padding: 10px 14px; border-radius: var(--radius); font-size: 13px; margin-bottom: 16px; display: none; }
+.error-message.show { display: block; }
+</style>
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-form-container card">
+    <div class="auth-brand">
+      <div class="logo">⚡</div>
+      <h1>InfraPulse AI</h1>
+    </div>
+    <div class="auth-form-title">Create your account</div>
+    <div class="auth-form-subtitle">Start monitoring your infrastructure today</div>
+
+    <div class="error-message" id="error-msg"></div>
+
+    <form id="register-form">
+      <div class="form-group">
+        <label class="form-label">Full Name</label>
+        <input type="text" class="form-input" id="full-name" placeholder="John Doe" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Work Email</label>
+        <input type="email" class="form-input" id="email" placeholder="you@company.com" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Organization Name</label>
+        <input type="text" class="form-input" id="org-name" placeholder="Acme Corp" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input type="password" class="form-input" id="password" placeholder="Min. 8 chars, 1 uppercase, 1 number" required>
+        <div class="form-help">At least 8 characters, one uppercase letter, one number</div>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;" id="submit-btn">
+        <span id="btn-text">Create Account</span>
+        <span id="btn-spinner" class="spinner" style="display:none;width:16px;height:16px;border-width:2px;"></span>
+      </button>
+    </form>
+
+    <div style="margin-top:20px;text-align:center;font-size:13px;color:var(--text-secondary)">
+      Already have an account? <a href="/login.html">Sign in</a>
+    </div>
+  </div>
+</div>
+<script src="/assets/js/api-client.js"></script>
+<script>
+if (window.api.isAuthenticated()) window.location.href = '/dashboard.html';
+
+document.getElementById('register-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const fullName = document.getElementById('full-name').value.trim();
+  const orgName = document.getElementById('org-name').value.trim();
+  const errorEl = document.getElementById('error-msg');
+  const btnText = document.getElementById('btn-text');
+  const btnSpinner = document.getElementById('btn-spinner');
+  const submitBtn = document.getElementById('submit-btn');
+
+  errorEl.classList.remove('show');
+  btnText.textContent = 'Creating account...';
+  btnSpinner.style.display = '';
+  submitBtn.disabled = true;
+
+  try {
+    await window.api.register(email, password, fullName, orgName);
+    window.location.href = '/dashboard.html';
+  } catch (err) {
+    errorEl.textContent = err.message || 'Registration failed.';
+    errorEl.classList.add('show');
+  } finally {
+    btnText.textContent = 'Create Account';
+    btnSpinner.style.display = 'none';
+    submitBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

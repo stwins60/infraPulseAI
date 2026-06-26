@@ -1,0 +1,90 @@
+<!-- Shared sidebar + topbar HTML partial — included via JS in each page -->
+<template id="sidebar-template">
+<aside class="sidebar" id="main-sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">⚡</div>
+    <div>
+      <div class="logo-text">InfraPulse AI</div>
+      <div class="logo-sub">Observability Platform</div>
+    </div>
+  </div>
+
+  <div class="org-switcher">
+    <select id="org-select" onchange="window.switchOrg(this.value)">
+      <option value="">Loading organizations...</option>
+    </select>
+  </div>
+
+  <nav>
+    <div class="nav-section">
+      <div class="nav-section-label">Overview</div>
+      <a href="/dashboard.html" class="nav-item" data-page="dashboard">
+        <span class="nav-icon">🏠</span> Overview
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Infrastructure</div>
+      <a href="/infrastructure.html" class="nav-item" data-page="infrastructure">
+        <span class="nav-icon">🗄️</span> Inventory
+      </a>
+      <a href="/proxmox.html" class="nav-item" data-page="proxmox">
+        <span class="nav-icon">🖥️</span> Proxmox
+      </a>
+      <a href="/servers.html" class="nav-item" data-page="servers">
+        <span class="nav-icon">💻</span> Servers
+      </a>
+      <a href="/containers.html" class="nav-item" data-page="containers">
+        <span class="nav-icon">📦</span> Containers
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Observability</div>
+      <a href="/logs.html" class="nav-item" data-page="logs">
+        <span class="nav-icon">📋</span> Logs
+      </a>
+      <a href="/alerts.html" class="nav-item" data-page="alerts">
+        <span class="nav-icon">🔔</span> Alerts
+        <span class="nav-badge" id="alert-badge" style="display:none"></span>
+      </a>
+      <a href="/incidents.html" class="nav-item" data-page="incidents">
+        <span class="nav-icon">🚨</span> Incidents
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Intelligence</div>
+      <a href="/ai-ops.html" class="nav-item" data-page="ai-ops">
+        <span class="nav-icon">🤖</span> AI Operations
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Configuration</div>
+      <a href="/notifications.html" class="nav-item" data-page="notifications">
+        <span class="nav-icon">📢</span> Notifications
+      </a>
+      <a href="/team.html" class="nav-item" data-page="team">
+        <span class="nav-icon">👥</span> Team
+      </a>
+      <a href="/settings.html" class="nav-item" data-page="settings">
+        <span class="nav-icon">⚙️</span> Settings
+      </a>
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="user-info" id="user-info-btn">
+      <div class="user-avatar" id="user-avatar">U</div>
+      <div>
+        <div class="user-name" id="user-name">Loading...</div>
+        <div class="user-role" id="user-role">Member</div>
+      </div>
+    </div>
+    <button class="btn btn-secondary btn-sm logout-btn" style="width:100%;margin-top:8px;justify-content:center;" onclick="window.doLogout()">
+      Sign Out
+    </button>
+  </div>
+</aside>
+</template>

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="0; url=/dashboard.html">
+<title>InfraPulse AI</title>
+<script src="/assets/js/api-client.js"></script>
+<script>
+  if (window.api.isAuthenticated()) {
+    window.location.href = '/dashboard.html';
+  } else {
+    window.location.href = '/login.html';
+  }
+</script>
+</head>
+<body></body>
+</html>

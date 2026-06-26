@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraPulse AI — Dashboard</title>
+<link rel="stylesheet" href="/assets/css/main.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="main-sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">⚡</div>
+      <div><div class="logo-text">InfraPulse AI</div><div class="logo-sub">Observability Platform</div></div>
+    </div>
+    <div class="org-switcher">
+      <select id="org-select"></select>
+    </div>
+    <nav>
+      <div class="nav-section">
+        <div class="nav-section-label">Overview</div>
+        <a href="/dashboard.html" class="nav-item active"><span class="nav-icon">🏠</span> Overview</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Infrastructure</div>
+        <a href="/infrastructure.html" class="nav-item"><span class="nav-icon">🗄️</span> Inventory</a>
+        <a href="/proxmox.html" class="nav-item"><span class="nav-icon">🖥️</span> Proxmox</a>
+        <a href="/servers.html" class="nav-item"><span class="nav-icon">💻</span> Servers</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Observability</div>
+        <a href="/logs.html" class="nav-item"><span class="nav-icon">📋</span> Logs</a>
+        <a href="/alerts.html" class="nav-item"><span class="nav-icon">🔔</span> Alerts <span class="nav-badge" id="alert-badge" style="display:none"></span></a>
+        <a href="/incidents.html" class="nav-item"><span class="nav-icon">🚨</span> Incidents</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Intelligence</div>
+        <a href="/ai-ops.html" class="nav-item"><span class="nav-icon">🤖</span> AI Operations</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Configuration</div>
+        <a href="/notifications.html" class="nav-item"><span class="nav-icon">📢</span> Notifications</a>
+        <a href="/team.html" class="nav-item"><span class="nav-icon">👥</span> Team</a>
+        <a href="/settings.html" class="nav-item"><span class="nav-icon">⚙️</span> Settings</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="user-avatar">U</div>
+        <div><div class="user-name" id="user-name">Loading...</div><div class="user-role" id="user-role">Member</div></div>
+      </div>
+      <button class="btn btn-secondary btn-sm" style="width:100%;margin-top:8px;justify-content:center;" id="logout-btn">Sign Out</button>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <div class="main-content">
+    <div class="topbar">
+      <div>
+        <div class="page-title">Infrastructure Overview</div>
+        <div class="page-subtitle" id="org-name-display">Loading organization...</div>
+      </div>
+      <div class="topbar-search">
+        <span class="search-icon">🔍</span>
+        <input type="text" placeholder="Search servers, alerts, logs...">
+      </div>
+      <div class="topbar-actions">
+        <button class="icon-btn" title="Refresh" id="refresh-btn">↻</button>
+        <button class="icon-btn" title="Alerts" onclick="window.location.href='/alerts.html'">
+          🔔 <span class="badge" id="topbar-alert-badge" style="display:none">0</span>
+        </button>
+        <button class="icon-btn" title="Settings" onclick="window.location.href='/settings.html'">⚙️</button>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <!-- Health Score Banner -->
+      <div id="health-banner" class="card" style="margin-bottom:20px;background:linear-gradient(135deg,rgba(59,130,246,0.05),rgba(139,92,246,0.05));border-color:rgba(59,130,246,0.2);display:flex;align-items:center;gap:20px;padding:16px 24px;">
+        <div>
+          <div class="health-score" id="health-score-circle">—</div>
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:700;">Infrastructure Health Score</div>
+          <div style="font-size:13px;color:var(--text-secondary);" id="health-score-desc">Calculating...</div>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px;">
+          <button class="btn btn-secondary btn-sm" onclick="window.location.href='/ai-ops.html'">🤖 AI Analysis</button>
+          <button class="btn btn-primary btn-sm" id="refresh-btn2">Refresh</button>
+        </div>
+      </div>
+
+      <!-- Stat Cards Row -->
+      <div class="stat-grid" id="stat-grid">
+        <div class="stat-card" onclick="filterServers('all')">
+          <div class="stat-icon">🖥️</div>
+          <div class="stat-label">Total Servers</div>
+          <div class="stat-value" id="stat-total">—</div>
+        </div>
+        <div class="stat-card healthy" onclick="filterServers('online')">
+          <div class="stat-icon">✅</div>
+          <div class="stat-label">Online</div>
+          <div class="stat-value" id="stat-online">—</div>
+        </div>
+        <div class="stat-card warning" onclick="filterServers('warning')">
+          <div class="stat-icon">⚠️</div>
+          <div class="stat-label">Warning</div>
+          <div class="stat-value" id="stat-warning">—</div>
+        </div>
+        <div class="stat-card critical" onclick="filterServers('critical')">
+          <div class="stat-icon">🔴</div>
+          <div class="stat-label">Critical</div>
+          <div class="stat-value" id="stat-critical">—</div>
+        </div>
+        <div class="stat-card offline" onclick="filterServers('offline')">
+          <div class="stat-icon">⚫</div>
+          <div class="stat-label">Offline</div>
+          <div class="stat-value" id="stat-offline">—</div>
+        </div>
+        <div class="stat-card info">
+          <div class="stat-icon">🖥️</div>
+          <div class="stat-label">Proxmox Clusters</div>
+          <div class="stat-value" id="stat-proxmox">—</div>
+        </div>
+        <div class="stat-card info">
+          <div class="stat-icon">⚡</div>
+          <div class="stat-label">Running VMs</div>
+          <div class="stat-value" id="stat-vms">—</div>
+        </div>
+        <div class="stat-card info">
+          <div class="stat-icon">📦</div>
+          <div class="stat-label">Containers</div>
+          <div class="stat-value" id="stat-containers">—</div>
+        </div>
+        <div class="stat-card critical" onclick="window.location.href='/incidents.html'">
+          <div class="stat-icon">🚨</div>
+          <div class="stat-label">Open Incidents</div>
+          <div class="stat-value" id="stat-incidents">—</div>
+        </div>
+        <div class="stat-card warning" onclick="window.location.href='/alerts.html'">
+          <div class="stat-icon">🔔</div>
+          <div class="stat-label">Alerts (24h)</div>
+          <div class="stat-value" id="stat-alerts24h">—</div>
+        </div>
+      </div>
+
+      <!-- Charts Row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px;" id="charts-row">
+        <div class="card">
+          <div class="card-header">
+            <div><div class="card-title">CPU Utilization</div><div class="card-subtitle">Organization average</div></div>
+            <span class="badge badge-info" id="cpu-avg">—%</span>
+          </div>
+          <div class="chart-container short"><canvas id="cpu-chart"></canvas></div>
+          <div id="top-cpu" style="margin-top:12px;"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div><div class="card-title">Memory Utilization</div><div class="card-subtitle">Organization average</div></div>
+            <span class="badge badge-info" id="mem-avg">—%</span>
+          </div>
+          <div class="chart-container short"><canvas id="mem-chart"></canvas></div>
+          <div id="top-mem" style="margin-top:12px;"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div><div class="card-title">Disk Utilization</div><div class="card-subtitle">Organization average</div></div>
+            <span class="badge badge-info" id="disk-avg">—%</span>
+          </div>
+          <div class="chart-container short"><canvas id="disk-chart"></canvas></div>
+          <div id="top-disk" style="margin-top:12px;"></div>
+        </div>
+      </div>
+
+      <!-- Recent Alerts + AI Row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Recent Alerts</div>
+            <a href="/alerts.html" class="btn btn-secondary btn-xs">View All</a>
+          </div>
+          <div id="recent-alerts">
+            <div class="empty-state">
+              <div class="empty-state-icon">🔔</div>
+              <div class="empty-state-title">No recent alerts</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">🤖 Recent AI Analyses</div>
+            <a href="/ai-ops.html" class="btn btn-secondary btn-xs">View All</a>
+          </div>
+          <div id="recent-ai">
+            <div class="empty-state">
+              <div class="empty-state-icon">🤖</div>
+              <div class="empty-state-title">No AI analyses yet</div>
+              <div class="empty-state-desc">Configure an AI provider to get started</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+
+<script src="/assets/js/api-client.js"></script>
+<script>
+if (!requireAuth()) throw new Error('Not authenticated');
+
+const orgId = getCurrentOrg();
+const user = getUserInfo();
+
+// Init UI
+document.getElementById('user-name').textContent = user.name || 'User';
+document.getElementById('user-avatar').textContent = (user.name || 'U')[0].toUpperCase();
+document.getElementById('logout-btn').addEventListener('click', async () => {
+  await window.api.logout();
+  window.location.href = '/login.html';
+});
+
+// Org switcher
+async function loadOrgs() {
+  try {
+    const orgs = await window.api.getOrganizations();
+    const sel = document.getElementById('org-select');
+    sel.innerHTML = orgs.map(o => `<option value="${o.id}" ${o.id === orgId ? 'selected' : ''}>${o.name}</option>`).join('');
+    if (orgs.length > 0) {
+      const current = orgs.find(o => o.id === orgId) || orgs[0];
+      document.getElementById('org-name-display').textContent = current.name;
+    }
+  } catch {}
+}
+document.getElementById('org-select').addEventListener('change', function() {
+  window.api.setCurrentOrg(this.value);
+  window.location.reload();
+});
+
+// Chart defaults
+Chart.defaults.color = '#8892a4';
+Chart.defaults.borderColor = '#1e2540';
+Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, Inter, sans-serif';
+Chart.defaults.font.size = 12;
+
+function createGaugeChart(id, value, color) {
+  const ctx = document.getElementById(id).getContext('2d');
+  return new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [value, 100 - value],
+        backgroundColor: [color, 'rgba(30,37,64,0.5)'],
+        borderWidth: 0,
+        cutout: '75%',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    }
+  });
+}
+
+function renderTopItems(containerId, items, label) {
+  const el = document.getElementById(containerId);
+  if (!items || items.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = items.slice(0, 3).map(item => {
+    const pct = Math.round(item.value);
+    const color = getProgressColor(pct);
+    return `<div style="margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:3px;font-size:12px;">
+        <span style="color:var(--text-secondary)">${item.server_id?.slice(0,8) || 'unknown'}</span>
+        <span style="font-weight:700;color:var(--text-primary)">${pct}%</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill ${color}" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+async function loadDashboard() {
+  try {
+    const [overview, metricsSummary] = await Promise.all([
+      window.api.getDashboardOverview(orgId),
+      window.api.getMetricsSummary(orgId).catch(() => null),
+    ]);
+
+    // Stat cards
+    document.getElementById('stat-total').textContent = overview.total_servers;
+    document.getElementById('stat-online').textContent = overview.online_servers;
+    document.getElementById('stat-warning').textContent = overview.warning_servers;
+    document.getElementById('stat-critical').textContent = overview.critical_servers;
+    document.getElementById('stat-offline').textContent = overview.offline_servers;
+    document.getElementById('stat-proxmox').textContent = overview.proxmox_clusters;
+    document.getElementById('stat-vms').textContent = overview.running_vms;
+    document.getElementById('stat-containers').textContent = overview.running_containers;
+    document.getElementById('stat-incidents').textContent = overview.open_incidents;
+    document.getElementById('stat-alerts24h').textContent = overview.alerts_24h;
+
+    // Health score
+    const score = overview.infrastructure_health_score;
+    const scoreEl = document.getElementById('health-score-circle');
+    scoreEl.textContent = score || '—';
+    scoreEl.className = `health-score ${getHealthClass(score)}`;
+    document.getElementById('health-score-desc').textContent =
+      score >= 90 ? 'All systems operating normally' :
+      score >= 70 ? 'Minor issues detected' :
+      score >= 50 ? 'Some systems require attention' :
+      score >= 25 ? 'Multiple issues requiring immediate attention' :
+      'Critical infrastructure issues detected';
+
+    // Alert badge
+    const openAlerts = (overview.recent_alerts || []).filter(a => a.status === 'open').length;
+    if (openAlerts > 0) {
+      document.getElementById('alert-badge').textContent = openAlerts;
+      document.getElementById('alert-badge').style.display = '';
+      document.getElementById('topbar-alert-badge').textContent = openAlerts;
+      document.getElementById('topbar-alert-badge').style.display = '';
+    }
+
+    // Charts
+    if (metricsSummary) {
+      document.getElementById('cpu-avg').textContent = `${metricsSummary.avg_cpu}%`;
+      document.getElementById('mem-avg').textContent = `${metricsSummary.avg_memory}%`;
+      document.getElementById('disk-avg').textContent = `${metricsSummary.avg_disk}%`;
+
+      createGaugeChart('cpu-chart', metricsSummary.avg_cpu, metricsSummary.avg_cpu >= 90 ? '#ef4444' : metricsSummary.avg_cpu >= 75 ? '#f59e0b' : '#22c55e');
+      createGaugeChart('mem-chart', metricsSummary.avg_memory, metricsSummary.avg_memory >= 90 ? '#ef4444' : metricsSummary.avg_memory >= 75 ? '#f59e0b' : '#3b82f6');
+      createGaugeChart('disk-chart', metricsSummary.avg_disk, metricsSummary.avg_disk >= 90 ? '#ef4444' : metricsSummary.avg_disk >= 75 ? '#f59e0b' : '#8b5cf6');
+
+      renderTopItems('top-cpu', metricsSummary.top_cpu, 'CPU');
+      renderTopItems('top-mem', metricsSummary.top_memory, 'Memory');
+      renderTopItems('top-disk', metricsSummary.top_disk, 'Disk');
+    }
+
+    // Recent alerts
+    const alertsEl = document.getElementById('recent-alerts');
+    if (overview.recent_alerts?.length > 0) {
+      alertsEl.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px;">` +
+        overview.recent_alerts.slice(0, 8).map(a => `
+          <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-secondary);border-radius:var(--radius);cursor:pointer;" onclick="window.location.href='/alerts.html'">
+            <span class="severity-dot ${a.severity}"></span>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${a.title}</div>
+              <div style="font-size:11px;color:var(--text-muted);">${formatRelativeTime(a.created_at)}</div>
+            </div>
+            ${getSeverityBadge(a.severity)}
+            ${getStatusBadge(a.status)}
+          </div>
+        `).join('') + '</div>';
+    }
+
+    // Recent AI analyses
+    const aiEl = document.getElementById('recent-ai');
+    if (overview.recent_ai_analyses?.length > 0) {
+      aiEl.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px;">` +
+        overview.recent_ai_analyses.map(a => `
+          <div style="padding:12px;background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.15);border-radius:var(--radius);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <span style="font-size:16px;">🤖</span>
+              <span style="font-size:12px;font-weight:700;color:var(--purple);text-transform:uppercase;">${a.analysis_type.replace('_', ' ')}</span>
+              <span style="margin-left:auto;font-size:11px;color:var(--text-muted);">${formatRelativeTime(a.created_at)}</span>
+            </div>
+            <div style="font-size:13px;color:var(--text-secondary);">${a.summary || 'Analysis complete'}</div>
+          </div>
+        `).join('') + '</div>';
+    }
+
+  } catch (err) {
+    console.error('Dashboard load error:', err);
+    showToast('Failed to load dashboard data', 'error');
+  }
+}
+
+function filterServers(status) {
+  window.location.href = `/servers.html${status !== 'all' ? '?status=' + status : ''}`;
+}
+
+document.getElementById('refresh-btn').addEventListener('click', loadDashboard);
+document.getElementById('refresh-btn2').addEventListener('click', loadDashboard);
+
+// Initialize
+loadOrgs();
+loadDashboard();
+
+// Auto-refresh every 30 seconds
+setInterval(loadDashboard, 30000);
+</script>
+</body>
+</html>
