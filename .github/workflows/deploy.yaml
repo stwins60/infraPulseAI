@@ -9,7 +9,7 @@ on:
 jobs:
   # test:
   #   name: Pytest
-  #   runs-on: ubuntu-latest
+  #   runs-on: prod-server-2-self-hosted
   #   steps:
   #     - name: Checkout repository
   #       uses: actions/checkout@v4
@@ -31,7 +31,7 @@ jobs:
 
   build:
     name: Build Docker Image
-    runs-on: ubuntu-latest
+    runs-on: prod-server-2-self-hosted
     # needs: test
 
     steps:
@@ -44,13 +44,26 @@ jobs:
 
   deploy:
     name: Deploy app
-    runs-on: ubuntu-latest
+    runs-on: prod-server-2-self-hosted
     needs: build
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
+
+      - name: Create environment file
+        working-directory: backend
+        run: |
+          cat > .env <<EOF
+          POSTGRES_USER=$POSTGRES_USER
+          POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+          POSTGRES_DB=$POSTGRES_DB
+          DATABASE_URL=$DATABASE_URL
+          OPENAI_API_KEY=$OPENAI_API_KEY
+          GROQ_API_KEY=$GROQ_API_KEY
+          EOF
+
+
       - name: deploy
-        run: docker compose up -d --build
+        run: docker compose --env-file .env up -d --build
     
